@@ -1,0 +1,11 @@
+
+> flexform@0.1.0 dev
+> next dev --hostname 127.0.0.1 --port 3011
+
+▲ Next.js 16.3.4 (Turbopack)
+- Local:         http://127.0.0.1:3011
+- Network:       http://127.0.0.1:3011
+✓ Ready in 474ms
+✓ Running next.config.ts took 37ms
+Creating turbopack project { dir: 'D:\\FlexForm', testMode: true }
+
