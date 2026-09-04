@@ -10,15 +10,14 @@ import {
   Bell,
   BookOpen,
   Bookmark,
-  CalendarDays,
   Check,
   ChevronRight,
-  CircleUserRound,
   Clock3,
   Coffee,
   Droplet,
   Dumbbell,
   Flame,
+  Footprints,
   Home,
   LockKeyhole,
   LogOut,
@@ -26,8 +25,8 @@ import {
   Minus,
   Play,
   Plus,
+  RotateCcw,
   Search,
-  Settings2,
   Sparkles,
   Target,
   TimerReset,
@@ -65,10 +64,9 @@ type RoutineDay = ReturnType<typeof buildRoutine>[number];
 
 const navItems = [
   { label: "Home" as const, icon: Home },
-  { label: "Plan" as const, icon: CalendarDays },
+  { label: "Plan" as const, icon: Dumbbell },
   { label: "Library" as const, icon: BookOpen },
   { label: "Progress" as const, icon: BarChart3 },
-  { label: "Profile" as const, icon: CircleUserRound },
 ];
 
 const goals: Array<{ value: Goal; copy: string }> = [
@@ -79,6 +77,47 @@ const goals: Array<{ value: Goal; copy: string }> = [
 ];
 
 const accentLabel = { blue: "Push", green: "Lower", purple: "Pull", orange: "Hinge" };
+
+type BodySide = "front" | "back";
+type BodyRegionName = "Chest" | "Shoulders" | "Arms" | "Core" | "Back" | "Glutes" | "Legs" | "Hamstrings" | "Calves";
+
+const bodyRegions: Record<BodySide, Array<{ name: BodyRegionName; className: string }>> = {
+  front: [
+    { name: "Shoulders", className: "front-shoulder-left" },
+    { name: "Shoulders", className: "front-shoulder-right" },
+    { name: "Chest", className: "front-chest" },
+    { name: "Arms", className: "front-arm-left" },
+    { name: "Arms", className: "front-arm-right" },
+    { name: "Core", className: "front-core" },
+    { name: "Legs", className: "front-leg-left" },
+    { name: "Legs", className: "front-leg-right" },
+    { name: "Calves", className: "front-calf-left" },
+    { name: "Calves", className: "front-calf-right" },
+  ],
+  back: [
+    { name: "Shoulders", className: "back-shoulder-left" },
+    { name: "Shoulders", className: "back-shoulder-right" },
+    { name: "Back", className: "back-torso" },
+    { name: "Arms", className: "back-arm-left" },
+    { name: "Arms", className: "back-arm-right" },
+    { name: "Glutes", className: "back-glutes" },
+    { name: "Hamstrings", className: "back-hamstrings" },
+    { name: "Calves", className: "back-calf-left" },
+    { name: "Calves", className: "back-calf-right" },
+  ],
+};
+
+const bodyRegionTerms: Record<BodyRegionName, string[]> = {
+  Chest: ["chest", "pectoral"],
+  Shoulders: ["shoulder", "deltoid"],
+  Arms: ["arms", "triceps", "biceps", "brachialis", "brachioradialis", "forearm", "elbow"],
+  Core: ["core", "rectus abdominis", "oblique", "anti-extension", "spinal flexion"],
+  Back: ["back", "latissimus", "rhomboid", "trapezius", "vertical pull", "horizontal pull"],
+  Glutes: ["glute", "hip extension"],
+  Legs: ["legs", "quadriceps", "adductor", "squat", "lunge", "step"],
+  Hamstrings: ["hamstring", "knee flexion", "hip hinge"],
+  Calves: ["calf", "calves", "gastrocnemius", "soleus", "plantar flexion"],
+};
 
 function Brand({ inverse = false }: { inverse?: boolean }) {
   return <div className={`brand ${inverse ? "inverse" : ""}`}><span>F</span><strong>FlexForm</strong></div>;
@@ -107,7 +146,7 @@ function AuthScreen({ onReady }: { onReady: (name: string) => void }) {
     <main className="auth-screen">
       <section className="auth-visual">
         <Brand inverse />
-        <div className="auth-art"><Image src="/exercises/generated/bench-press.png" alt="Barbell bench press visual guide" fill priority sizes="(max-width: 760px) 100vw, 54vw" /></div>
+        <div className="auth-art"><Image src="/exercises/generated/bench-press-anatomical.png" alt="Anatomical barbell bench press visual guide" fill priority sizes="(max-width: 760px) 100vw, 54vw" /></div>
         <div className="auth-statement"><span><Sparkles size={14} /> Your training system</span><h1>Build a body<br />that performs.</h1><p>35 visual exercise guides. A routine shaped around you. Every session recorded.</p></div>
         <div className="auth-proof"><strong>35</strong><span>original movement guides</span><strong>1</strong><span>plan built for you</span></div>
       </section>
@@ -269,11 +308,117 @@ function HomeView({ name, routine, saved, onOpen, onSave, onNavigate, onStart }:
 }
 
 function PlanView({ routine, onOpen, onStart, onCustomize }: { routine: RoutineDay[]; onOpen: (exercise: ExerciseGuide) => void; onStart: (day: RoutineDay) => void; onCustomize: () => void }) {
-  return <section><div className="view-heading"><span className="eyebrow">Your training architecture</span><h1>My routine.</h1><p>A repeatable week built around your goal. Tap any exercise to study its complete visual guide.</p></div><div className="plan-summary"><div><Sparkles /><span>Personalized split<strong>{routine.length} training days</strong></span></div><button onClick={onCustomize}><Settings2 size={16} /> Customize</button></div>{routine.length ? <div className="routine-days">{routine.map((day, dayIndex) => <article key={day.id}><header><span>{String(dayIndex + 1).padStart(2, "0")}</span><div><small>Training day</small><h2>{day.name}</h2></div><button onClick={() => onStart(day)}>Start <ArrowRight size={15} /></button></header><div>{day.exercises.map((exercise, index) => <button key={`${day.id}-${exercise.id}`} onClick={() => onOpen(exercise)}><span>{index + 1}</span><div><strong>{exercise.name}</strong><small>{exercise.primary} · {exercise.sets} × {exercise.reps}</small></div><ChevronRight size={16} /></button>)}</div></article>)}</div> : <div className="empty-state"><Dumbbell /><h2>Your routine is empty</h2><p>Choose exercises from the visual library, then save your first training day.</p><button className="primary-button" onClick={onCustomize}>Build my routine <ArrowRight size={17} /></button></div>}</section>;
+  const [range, setRange] = useState("week");
+  const [expandedDay, setExpandedDay] = useState<string | null>(null);
+  const activeMinutes = Math.max(0, 80 + Math.max(0, routine.length - 1) * 60);
+  const completedWorkouts = Math.max(0, routine.length - 1);
+  const scheduleOrder = [1, 3, 4, 6, 2, 5, 0];
+  const completedDays = new Set(scheduleOrder.slice(0, completedWorkouts));
+  const plannedDays = new Set(scheduleOrder.slice(0, routine.length));
+  const weekDays = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+
+  return (
+    <section className="plan-view">
+      <Tabs value={range} onValueChange={(value) => setRange(String(value ?? "week"))} className="plan-range-tabs">
+        <TabsList>
+          <TabsTrigger value="today">Today</TabsTrigger>
+          <TabsTrigger value="week">This week</TabsTrigger>
+        </TabsList>
+      </Tabs>
+
+      <div className="plan-metrics" aria-label={`${range === "today" ? "Today's" : "This week's"} workout totals`}>
+        <article>
+          <Clock3 size={17} />
+          <span>Active time</span>
+          <strong>{range === "today" ? "45" : `${Math.floor(activeMinutes / 60)}h ${activeMinutes % 60}`}<small>{range === "today" ? "m" : "m"}</small></strong>
+        </article>
+        <article>
+          <Footprints size={18} />
+          <span>Steps</span>
+          <strong>{range === "today" ? "7,842" : "38,420"}</strong>
+        </article>
+        <article>
+          <Dumbbell size={18} />
+          <span>Workouts</span>
+          <strong>{range === "today" ? (routine.length ? 1 : 0) : completedWorkouts}</strong>
+        </article>
+      </div>
+
+      <section className="checkin-section" aria-labelledby="checkin-title">
+        <h2 id="checkin-title">Workout check-ins</h2>
+        <div className="checkin-days">
+          {weekDays.map((label, index) => {
+            const complete = completedDays.has(index);
+            const planned = plannedDays.has(index);
+            return (
+              <div className={`${complete ? "complete" : ""} ${planned && !complete ? "planned" : ""}`} key={label}>
+                <span>{complete ? <Check size={13} /> : <i />}</span>
+                <small>{label}</small>
+              </div>
+            );
+          })}
+        </div>
+      </section>
+
+      <section className="workout-schedule" aria-labelledby="workouts-title">
+        <header>
+          <div>
+            <h2 id="workouts-title">Workouts</h2>
+            <p>Weekly workouts as planned</p>
+          </div>
+          <button onClick={onCustomize} aria-label="Customize workout plan"><Plus size={27} /></button>
+        </header>
+
+        {routine.length ? (
+          <div className="plan-workout-list">
+            {routine.map((day, dayIndex) => {
+              const expanded = expandedDay === day.id;
+              const calories = day.exercises.reduce((total, exercise) => total + Math.round((exercise.caloriesPerMinute[0] + exercise.caloriesPerMinute[1]) * 3), 0);
+              return (
+                <article className={expanded ? "expanded" : ""} key={day.id}>
+                  <button className="plan-workout-summary" onClick={() => setExpandedDay(expanded ? null : day.id)} aria-expanded={expanded}>
+                    <div>
+                      <span className="workout-timing">
+                        {dayIndex === 0 ? "Today" : dayIndex === 1 ? "Tomorrow" : "Later this week"}
+                        {dayIndex === 1 && <b>Upcoming</b>}
+                      </span>
+                      <strong>{day.name}</strong>
+                      <span className="workout-meta">
+                        <small><Clock3 size={13} /> {42 + dayIndex * 3} mins</small>
+                        <small><Footprints size={13} /> {day.exercises.length} exercises</small>
+                        <small><Flame size={13} /> {calories} kcal</small>
+                      </span>
+                    </div>
+                    <i><ChevronRight size={18} /></i>
+                  </button>
+                  {expanded && (
+                    <div className="plan-workout-details">
+                      {day.exercises.map((exercise, index) => (
+                        <button key={`${day.id}-${exercise.id}`} onClick={() => onOpen(exercise)}>
+                          <span>{String(index + 1).padStart(2, "0")}</span>
+                          <div><strong>{exercise.name}</strong><small>{exercise.sets} sets · {exercise.reps} reps</small></div>
+                          <ChevronRight size={15} />
+                        </button>
+                      ))}
+                      <button className="start-plan-workout" onClick={() => onStart(day)}>Start workout <ArrowRight size={16} /></button>
+                    </div>
+                  )}
+                </article>
+              );
+            })}
+          </div>
+        ) : (
+          <div className="empty-state"><Dumbbell /><h2>Your routine is empty</h2><p>Choose exercises from the visual library, then save your first training day.</p><button className="primary-button" onClick={onCustomize}>Build my routine <ArrowRight size={17} /></button></div>
+        )}
+      </section>
+    </section>
+  );
 }
 
 function LibraryView({ saved, builderMode, customSelection, onOpen, onSave, onToggleSelection, onSaveRoutine }: { saved: string[]; builderMode: boolean; customSelection: string[]; onOpen: (exercise: ExerciseGuide) => void; onSave: (id: string) => void; onToggleSelection: (id: string) => void; onSaveRoutine: () => void }) {
   const [query, setQuery] = useState("");
+  const [bodySide, setBodySide] = useState<BodySide>("front");
+  const [bodyPart, setBodyPart] = useState<BodyRegionName | null>(null);
   const [area, setArea] = useState<(typeof bodyAreas)[number]>("All");
   const [muscle, setMuscle] = useState<(typeof muscleGroups)[number]>("All muscles");
   const [equipment, setEquipment] = useState<(typeof equipmentOptions)[number]>("All");
@@ -281,11 +426,33 @@ function LibraryView({ saved, builderMode, customSelection, onOpen, onSave, onTo
   const filtered = useMemo(() => exercises.filter((exercise) => {
     const haystack = `${exercise.name} ${exercise.primary} ${exercise.secondary.join(" ")} ${exercise.movement}`.toLowerCase();
     const normalizedMuscle = muscle.toLowerCase().replace("deltoids", "deltoid").replace("calves", "gastrocnemius");
-    return (!query || haystack.includes(query.toLowerCase())) && (area === "All" || exercise.bodyArea === area) && (muscle === "All muscles" || haystack.includes(normalizedMuscle)) && (equipment === "All" || exercise.equipment === equipment) && (difficulty === "All" || exercise.level === difficulty);
-  }), [area, difficulty, equipment, muscle, query]);
-  const clear = () => { setArea("All"); setMuscle("All muscles"); setEquipment("All"); setDifficulty("All"); setQuery(""); };
+    const bodyPartMatch = !bodyPart || bodyRegionTerms[bodyPart].some((term) => haystack.includes(term));
+    return bodyPartMatch && (!query || haystack.includes(query.toLowerCase())) && (area === "All" || exercise.bodyArea === area) && (muscle === "All muscles" || haystack.includes(normalizedMuscle)) && (equipment === "All" || exercise.equipment === equipment) && (difficulty === "All" || exercise.level === difficulty);
+  }), [area, bodyPart, difficulty, equipment, muscle, query]);
+  const clear = () => { setBodyPart(null); setArea("All"); setMuscle("All muscles"); setEquipment("All"); setDifficulty("All"); setQuery(""); };
+  const selectBodyPart = (part: BodyRegionName) => {
+    setBodyPart((current) => current === part ? null : part);
+    setArea("All");
+    setMuscle("All muscles");
+    setEquipment("All");
+    setDifficulty("All");
+    setQuery("");
+  };
 
-  return <section><div className="view-heading"><span className="eyebrow">35 original visual guides</span><h1>{builderMode ? "Build your routine." : "Exercise library."}</h1><p>Filter from broad body areas down to exact muscles, equipment, and training level.</p></div>{builderMode && <div className="builder-banner"><div><Sparkles /><span>Routine builder<strong>{customSelection.length} exercise{customSelection.length === 1 ? "" : "s"} selected</strong></span></div><button disabled={!customSelection.length} onClick={onSaveRoutine}>Save routine</button></div>}<SearchField value={query} onChange={setQuery} /><div className="filter-panel"><div><span>Body area</span><div className="filter-pills">{bodyAreas.map((item) => <button className={area === item ? "active" : ""} key={item} onClick={() => setArea(item)}>{item}</button>)}</div></div><div className="select-filters"><label><span>Muscle</span><select value={muscle} onChange={(event) => setMuscle(event.target.value as typeof muscle)}>{muscleGroups.map((item) => <option key={item}>{item}</option>)}</select></label><label><span>Equipment</span><select value={equipment} onChange={(event) => setEquipment(event.target.value as typeof equipment)}>{equipmentOptions.map((item) => <option key={item}>{item}</option>)}</select></label><label><span>Difficulty</span><select value={difficulty} onChange={(event) => setDifficulty(event.target.value as typeof difficulty)}>{difficultyOptions.map((item) => <option key={item}>{item}</option>)}</select></label></div></div><SectionTitle kicker={`${filtered.length} movement${filtered.length === 1 ? "" : "s"}`} title="Explore the index" action={<button className="text-button" onClick={clear}>Reset filters</button>} />{filtered.length ? <div className="exercise-grid">{filtered.map((exercise) => <ExerciseCard key={exercise.id} exercise={exercise} saved={saved.includes(exercise.id)} selected={customSelection.includes(exercise.id)} onOpen={() => onOpen(exercise)} onSave={() => onSave(exercise.id)} onAdd={builderMode ? () => onToggleSelection(exercise.id) : undefined} />)}</div> : <div className="empty-state"><Search /><h2>No exact match</h2><p>Reset the filters or broaden the body area.</p><button className="primary-button" onClick={clear}>Reset filters</button></div>}</section>;
+  return <section><div className="view-heading"><span className="eyebrow">35 anatomical movement guides</span><h1>{builderMode ? "Build your routine." : "Exercise library."}</h1><p>Tap a muscle on the body to instantly explore every related exercise, or use the detailed filters below.</p></div>{builderMode && <div className="builder-banner"><div><Sparkles /><span>Routine builder<strong>{customSelection.length} exercise{customSelection.length === 1 ? "" : "s"} selected</strong></span></div><button disabled={!customSelection.length} onClick={onSaveRoutine}>Save routine</button></div>}
+    <section className="body-explorer" aria-labelledby="body-explorer-title">
+      <header><div><span className="eyebrow">Interactive muscle map</span><h2 id="body-explorer-title">Where do you want to train?</h2></div><div className="body-side-toggle"><button className={bodySide === "front" ? "active" : ""} onClick={() => setBodySide("front")}>Front</button><button className={bodySide === "back" ? "active" : ""} onClick={() => setBodySide("back")}>Back</button></div></header>
+      <div className="body-explorer-layout">
+        <div className="body-model-stage">
+          <div className={`body-model ${bodySide === "back" ? "show-back" : ""}`}>
+            {(["front", "back"] as BodySide[]).map((side) => <div className={`body-face body-${side}`} key={side} aria-hidden={bodySide !== side}><Image src={`/anatomy/body-${side}.png`} alt={`${side} anatomical muscle map`} fill sizes="(max-width: 620px) 74vw, 300px" priority={side === "front"} />{bodyRegions[side].map((region) => <button className={`${region.className} ${bodyPart === region.name ? "selected" : ""}`} key={`${side}-${region.className}`} onClick={() => selectBodyPart(region.name)} aria-label={`Show ${region.name.toLowerCase()} exercises`} tabIndex={bodySide === side ? 0 : -1}><span>{region.name}</span></button>)}</div>)}
+          </div>
+          <button className="rotate-body" onClick={() => setBodySide((side) => side === "front" ? "back" : "front")}><RotateCcw size={16} /> Rotate to {bodySide === "front" ? "back" : "front"}</button>
+        </div>
+        <div className="body-selection-copy"><span>Selected area</span><h3>{bodyPart ?? "Tap a muscle"}</h3><p>{bodyPart ? `${filtered.length} related exercise${filtered.length === 1 ? "" : "s"} shown below.` : "Choose any highlighted region on the front or back of the body."}</p>{bodyPart && <button onClick={() => setBodyPart(null)}>Clear selection <X size={14} /></button>}</div>
+      </div>
+    </section>
+    <SearchField value={query} onChange={setQuery} /><div className="filter-panel"><div><span>Body area</span><div className="filter-pills">{bodyAreas.map((item) => <button className={area === item ? "active" : ""} key={item} onClick={() => { setArea(item); setBodyPart(null); }}>{item}</button>)}</div></div><div className="select-filters"><label><span>Muscle</span><select value={muscle} onChange={(event) => { setMuscle(event.target.value as typeof muscle); setBodyPart(null); }}>{muscleGroups.map((item) => <option key={item}>{item}</option>)}</select></label><label><span>Equipment</span><select value={equipment} onChange={(event) => setEquipment(event.target.value as typeof equipment)}>{equipmentOptions.map((item) => <option key={item}>{item}</option>)}</select></label><label><span>Difficulty</span><select value={difficulty} onChange={(event) => setDifficulty(event.target.value as typeof difficulty)}>{difficultyOptions.map((item) => <option key={item}>{item}</option>)}</select></label></div></div><SectionTitle kicker={bodyPart ? `${filtered.length} ${bodyPart.toLowerCase()} movement${filtered.length === 1 ? "" : "s"}` : `${filtered.length} movement${filtered.length === 1 ? "" : "s"}`} title={bodyPart ? `Train your ${bodyPart.toLowerCase()}` : "Explore the index"} action={<button className="text-button" onClick={clear}>Reset filters</button>} />{filtered.length ? <div className="exercise-grid">{filtered.map((exercise) => <ExerciseCard key={exercise.id} exercise={exercise} saved={saved.includes(exercise.id)} selected={customSelection.includes(exercise.id)} onOpen={() => onOpen(exercise)} onSave={() => onSave(exercise.id)} onAdd={builderMode ? () => onToggleSelection(exercise.id) : undefined} />)}</div> : <div className="empty-state"><Search /><h2>No exact match</h2><p>Reset the filters or broaden the body area.</p><button className="primary-button" onClick={clear}>Reset filters</button></div>}</section>;
 }
 
 function ProgressView({ calories, workouts }: { calories: number; workouts: number }) {
@@ -456,5 +623,5 @@ export default function FlexFormDashboard() {
   if (stage === "auth") return <AuthScreen onReady={(name) => { setDisplayName(name); setStage("onboarding"); }} />;
   if (stage === "onboarding") return <Onboarding displayName={displayName} onComplete={finishOnboarding} />;
 
-  return <div className="app-shell"><header className="app-header"><Brand /><div><ThemeControls compact /><span>{profile.goal}</span><button onClick={() => navigate("Profile")}>{profile.displayName.slice(0, 2).toUpperCase()}</button></div></header><main className="app-content">{view === "Home" && <HomeView name={profile.displayName} routine={routine} saved={saved} onOpen={setSelected} onSave={toggleSaved} onNavigate={navigate} onStart={setActiveWorkout} />}{view === "Plan" && <PlanView routine={routine} onOpen={setSelected} onStart={setActiveWorkout} onCustomize={() => { setBuilderMode(true); setCustomSelection(routine.flatMap((day) => day.exercises.map((exercise) => exercise.id))); navigate("Library"); }} />}{view === "Library" && <LibraryView saved={saved} builderMode={builderMode} customSelection={customSelection} onOpen={setSelected} onSave={toggleSaved} onToggleSelection={(id) => setCustomSelection((items) => items.includes(id) ? items.filter((item) => item !== id) : [...items, id])} onSaveRoutine={saveCustomRoutine} />}{view === "Progress" && <ProgressView calories={calories} workouts={workouts} />}{view === "Profile" && <ProfileView profile={profile} savedCount={saved.length} onRestart={() => { void signOut(); setStage("auth"); }} />}</main><nav className="floating-nav">{navItems.map(({ label, icon: Icon }) => <button key={label} className={view === label ? "active" : ""} onClick={() => navigate(label)}><Icon size={19} /><span>{label}</span></button>)}</nav>{selected && <ExerciseDetail exercise={selected} saved={saved.includes(selected.id)} onSave={() => toggleSaved(selected.id)} onClose={() => setSelected(null)} onComplete={() => { void saveGuideCompletion(selected.id).catch(() => undefined); setSelected(null); notify("Guide complete. Clean reps win."); }} />}{activeWorkout && <WorkoutSession day={activeWorkout} onClose={() => setActiveWorkout(null)} onFinish={(completed, burned) => { void saveWorkoutSummary(activeWorkout.id, activeWorkout.name, completed, burned).catch(() => undefined); setCalories((value) => value + burned); setWorkouts((value) => value + 1); setActiveWorkout(null); notify(`${completed.length} exercises logged · ${burned} kcal estimated`); }} />}{toast && <div className="toast"><Check size={15} />{toast}</div>}</div>;
+  return <div className="app-shell"><header className={`app-header ${view === "Plan" ? "plan-app-header" : ""}`}>{view === "Plan" ? <div className="app-section-name"><Dumbbell size={25} /><strong>Workouts</strong></div> : <Brand />}<div><ThemeControls compact />{view === "Plan" && <button className="header-notification" aria-label="Notifications"><Bell size={18} /><i /></button>}<span>{profile.goal}</span><button onClick={() => navigate("Profile")}>{profile.displayName.slice(0, 2).toUpperCase()}</button></div></header><main className={`app-content ${view === "Plan" ? "plan-content" : ""}`}>{view === "Home" && <HomeView name={profile.displayName} routine={routine} saved={saved} onOpen={setSelected} onSave={toggleSaved} onNavigate={navigate} onStart={setActiveWorkout} />}{view === "Plan" && <PlanView routine={routine} onOpen={setSelected} onStart={setActiveWorkout} onCustomize={() => { setBuilderMode(true); setCustomSelection(routine.flatMap((day) => day.exercises.map((exercise) => exercise.id))); navigate("Library"); }} />}{view === "Library" && <LibraryView saved={saved} builderMode={builderMode} customSelection={customSelection} onOpen={setSelected} onSave={toggleSaved} onToggleSelection={(id) => setCustomSelection((items) => items.includes(id) ? items.filter((item) => item !== id) : [...items, id])} onSaveRoutine={saveCustomRoutine} />}{view === "Progress" && <ProgressView calories={calories} workouts={workouts} />}{view === "Profile" && <ProfileView profile={profile} savedCount={saved.length} onRestart={() => { void signOut(); setStage("auth"); }} />}</main><nav className="floating-nav">{navItems.map(({ label, icon: Icon }) => <button key={label} className={view === label ? "active" : ""} onClick={() => navigate(label)}><Icon size={19} /><span>{label}</span></button>)}</nav>{selected && <ExerciseDetail exercise={selected} saved={saved.includes(selected.id)} onSave={() => toggleSaved(selected.id)} onClose={() => setSelected(null)} onComplete={() => { void saveGuideCompletion(selected.id).catch(() => undefined); setSelected(null); notify("Guide complete. Clean reps win."); }} />}{activeWorkout && <WorkoutSession day={activeWorkout} onClose={() => setActiveWorkout(null)} onFinish={(completed, burned) => { void saveWorkoutSummary(activeWorkout.id, activeWorkout.name, completed, burned).catch(() => undefined); setCalories((value) => value + burned); setWorkouts((value) => value + 1); setActiveWorkout(null); notify(`${completed.length} exercises logged · ${burned} kcal estimated`); }} />}{toast && <div className="toast"><Check size={15} />{toast}</div>}</div>;
 }

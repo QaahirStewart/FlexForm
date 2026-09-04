@@ -32,7 +32,7 @@ type Draft = Omit<ExerciseGuide, "image" | "rir" | "caloriesPerMinute"> & {
 
 const guide = (draft: Draft): ExerciseGuide => ({
   ...draft,
-  image: `/exercises/generated/${draft.id}.png`,
+  image: `/exercises/generated/${draft.id}-anatomical.png`,
   rir: "1–2",
   caloriesPerMinute: draft.caloriesPerMinute ?? [5, 8],
 });
