@@ -81,29 +81,62 @@ const accentLabel = { blue: "Push", green: "Lower", purple: "Pull", orange: "Hin
 type BodySide = "front" | "back";
 type BodyRegionName = "Chest" | "Shoulders" | "Arms" | "Core" | "Back" | "Glutes" | "Legs" | "Hamstrings" | "Calves";
 
-const bodyRegions: Record<BodySide, Array<{ name: BodyRegionName; className: string }>> = {
+const bodyRegions: Record<BodySide, Array<{ name: BodyRegionName; paths: string[] }>> = {
   front: [
-    { name: "Shoulders", className: "front-shoulder-left" },
-    { name: "Shoulders", className: "front-shoulder-right" },
-    { name: "Chest", className: "front-chest" },
-    { name: "Arms", className: "front-arm-left" },
-    { name: "Arms", className: "front-arm-right" },
-    { name: "Core", className: "front-core" },
-    { name: "Legs", className: "front-leg-left" },
-    { name: "Legs", className: "front-leg-right" },
-    { name: "Calves", className: "front-calf-left" },
-    { name: "Calves", className: "front-calf-right" },
+    { name: "Shoulders", paths: [
+      "M38 29C33 27 27 29 23 34C21 38 22 43 26 46C30 44 31 38 33 35C35 32 37 31 38 29Z",
+      "M62 29C67 27 73 29 77 34C79 38 78 43 74 46C70 44 69 38 67 35C65 32 63 31 62 29Z",
+    ] },
+    { name: "Chest", paths: [
+      "M39 33C42 31 47 31 49 34L49 48C45 48 40 45 36 41C36 37 37 35 39 33Z",
+      "M61 33C58 31 53 31 51 34L51 48C55 48 60 45 64 41C64 37 63 35 61 33Z",
+    ] },
+    { name: "Arms", paths: [
+      "M25 42C21 47 20 55 22 62C24 66 25 70 27 73C30 69 30 63 28 58C31 52 31 46 29 42Z",
+      "M22 61C18 67 15 76 17 82C18 86 21 87 23 83L27 72C25 69 24 65 22 61Z",
+      "M75 42C79 47 80 55 78 62C76 66 75 70 73 73C70 69 70 63 72 58C69 52 69 46 71 42Z",
+      "M78 61C82 67 85 76 83 82C82 86 79 87 77 83L73 72C75 69 76 65 78 61Z",
+    ] },
+    { name: "Core", paths: [
+      "M40 47C43 49 47 49 49 48L49 78C45 78 42 74 40 69C38 61 37 53 40 47Z",
+      "M60 47C57 49 53 49 51 48L51 78C55 78 58 74 60 69C62 61 63 53 60 47Z",
+    ] },
+    { name: "Legs", paths: [
+      "M39 77C34 82 32 93 33 104C34 111 38 114 43 110C46 102 47 91 47 80C44 79 42 78 39 77Z",
+      "M61 77C66 82 68 93 67 104C66 111 62 114 57 110C54 102 53 91 53 80C56 79 58 78 61 77Z",
+    ] },
+    { name: "Calves", paths: [
+      "M36 108C32 114 32 126 35 136C37 141 41 138 42 132L43 113C41 109 39 108 36 108Z",
+      "M64 108C68 114 68 126 65 136C63 141 59 138 58 132L57 113C59 109 61 108 64 108Z",
+    ] },
   ],
   back: [
-    { name: "Shoulders", className: "back-shoulder-left" },
-    { name: "Shoulders", className: "back-shoulder-right" },
-    { name: "Back", className: "back-torso" },
-    { name: "Arms", className: "back-arm-left" },
-    { name: "Arms", className: "back-arm-right" },
-    { name: "Glutes", className: "back-glutes" },
-    { name: "Hamstrings", className: "back-hamstrings" },
-    { name: "Calves", className: "back-calf-left" },
-    { name: "Calves", className: "back-calf-right" },
+    { name: "Shoulders", paths: [
+      "M38 29C33 27 27 29 23 34C21 38 22 43 26 46C30 44 31 38 33 35C35 32 37 31 38 29Z",
+      "M62 29C67 27 73 29 77 34C79 38 78 43 74 46C70 44 69 38 67 35C65 32 63 31 62 29Z",
+    ] },
+    { name: "Back", paths: [
+      "M49 29C44 31 40 34 36 39C38 45 40 48 40 55C37 60 36 66 38 72C42 69 46 65 49 60Z",
+      "M51 29C56 31 60 34 64 39C62 45 60 48 60 55C63 60 64 66 62 72C58 69 54 65 51 60Z",
+    ] },
+    { name: "Arms", paths: [
+      "M25 42C21 47 20 55 22 62C24 66 25 70 27 73C30 69 30 63 28 58C31 52 31 46 29 42Z",
+      "M22 61C18 67 15 76 17 82C18 86 21 87 23 83L27 72C25 69 24 65 22 61Z",
+      "M75 42C79 47 80 55 78 62C76 66 75 70 73 73C70 69 70 63 72 58C69 52 69 46 71 42Z",
+      "M78 61C82 67 85 76 83 82C82 86 79 87 77 83L73 72C75 69 76 65 78 61Z",
+    ] },
+    { name: "Glutes", paths: [
+      "M39 72C34 74 33 82 36 88C40 92 45 90 49 85L49 74C46 72 42 71 39 72Z",
+      "M61 72C66 74 67 82 64 88C60 92 55 90 51 85L51 74C54 72 58 71 61 72Z",
+    ] },
+    { name: "Hamstrings", paths: [
+      "M38 88C34 94 34 106 37 113C40 117 44 113 46 108L48 89C45 91 42 91 38 88Z",
+      "M62 88C66 94 66 106 63 113C60 117 56 113 54 108L52 89C55 91 58 91 62 88Z",
+    ] },
+    { name: "Calves", paths: [
+      "M36 111C32 118 33 130 36 138C38 142 41 138 42 132L43 116C41 112 39 111 36 111Z",
+      "M64 111C68 118 67 130 64 138C62 142 59 138 58 132L57 116C59 112 61 111 64 111Z",
+    ] },
   ],
 };
 
@@ -117,6 +150,25 @@ const bodyRegionTerms: Record<BodyRegionName, string[]> = {
   Legs: ["legs", "quadriceps", "adductor", "squat", "lunge", "step"],
   Hamstrings: ["hamstring", "knee flexion", "hip hinge"],
   Calves: ["calf", "calves", "gastrocnemius", "soleus", "plantar flexion"],
+};
+
+const bodyRegionArtwork: Record<BodySide, Partial<Record<BodyRegionName, string>>> = {
+  front: {
+    Shoulders: "/anatomy/body-front-shoulders.png",
+    Chest: "/anatomy/body-front-chest.png",
+    Arms: "/anatomy/body-front-arms.png",
+    Core: "/anatomy/body-front-core.png",
+    Legs: "/anatomy/body-front-legs.png",
+    Calves: "/anatomy/body-front-calves.png",
+  },
+  back: {
+    Shoulders: "/anatomy/body-back-shoulders.png",
+    Back: "/anatomy/body-back-back.png",
+    Arms: "/anatomy/body-back-arms.png",
+    Glutes: "/anatomy/body-back-glutes.png",
+    Hamstrings: "/anatomy/body-back-hamstrings.png",
+    Calves: "/anatomy/body-back-calves.png",
+  },
 };
 
 function Brand({ inverse = false }: { inverse?: boolean }) {
@@ -216,8 +268,13 @@ function ExerciseCard({ exercise, saved, selected, onOpen, onSave, onAdd, featur
   return (
     <article className={`exercise-card accent-${exercise.accent} ${feature ? "feature" : ""}`}>
       <button className="exercise-open" onClick={onOpen}>
-        <div className="exercise-art"><Image src={exercise.image} alt={`${exercise.name} visual demonstration`} fill sizes={feature ? "(max-width: 700px) 94vw, 620px" : "(max-width: 700px) 48vw, 300px"} /><span>{accentLabel[exercise.accent]}</span></div>
-        <div className="exercise-copy"><small>{exercise.primary}</small><h3>{exercise.name}</h3><p>{exercise.equipment} · {exercise.level}</p><strong>{exercise.sets} × {exercise.reps}</strong></div>
+        <div className="exercise-art"><Image src={exercise.heroImage} alt={`${exercise.name} starting position`} fill sizes={feature ? "(max-width: 700px) 94vw, 620px" : "(max-width: 700px) 48vw, 300px"} /></div>
+        <div className="exercise-copy">
+          <div className="exercise-card-heading"><span>{accentLabel[exercise.accent]}</span><small>{exercise.primary}</small></div>
+          <h3>{exercise.name}</h3>
+          <div className="exercise-card-tags"><span>{exercise.equipment}</span><span>{exercise.level}</span></div>
+          <div className="exercise-card-dose"><span><b>{exercise.sets}</b> sets</span><span><b>{exercise.reps}</b> reps</span><ChevronRight size={16} /></div>
+        </div>
       </button>
       <button className={`bookmark-button ${saved ? "saved" : ""}`} onClick={onSave} aria-label="Save exercise"><Bookmark size={16} fill={saved ? "currentColor" : "none"} /></button>
       {onAdd && <button className={`add-button ${selected ? "added" : ""}`} onClick={onAdd}>{selected ? <Check size={16} /> : <Plus size={16} />}</button>}
@@ -438,16 +495,23 @@ function LibraryView({ saved, builderMode, customSelection, onOpen, onSave, onTo
     setDifficulty("All");
     setQuery("");
   };
+  const showBodySide = (side: BodySide) => {
+    setBodySide(side);
+    setBodyPart(null);
+  };
 
   return <section><div className="view-heading"><span className="eyebrow">35 anatomical movement guides</span><h1>{builderMode ? "Build your routine." : "Exercise library."}</h1><p>Tap a muscle on the body to instantly explore every related exercise, or use the detailed filters below.</p></div>{builderMode && <div className="builder-banner"><div><Sparkles /><span>Routine builder<strong>{customSelection.length} exercise{customSelection.length === 1 ? "" : "s"} selected</strong></span></div><button disabled={!customSelection.length} onClick={onSaveRoutine}>Save routine</button></div>}
     <section className="body-explorer" aria-labelledby="body-explorer-title">
-      <header><div><span className="eyebrow">Interactive muscle map</span><h2 id="body-explorer-title">Where do you want to train?</h2></div><div className="body-side-toggle"><button className={bodySide === "front" ? "active" : ""} onClick={() => setBodySide("front")}>Front</button><button className={bodySide === "back" ? "active" : ""} onClick={() => setBodySide("back")}>Back</button></div></header>
+      <header><div><span className="eyebrow">Interactive muscle map</span><h2 id="body-explorer-title">Where do you want to train?</h2></div><div className="body-side-toggle"><button className={bodySide === "front" ? "active" : ""} onClick={() => showBodySide("front")}>Front</button><button className={bodySide === "back" ? "active" : ""} onClick={() => showBodySide("back")}>Back</button></div></header>
       <div className="body-explorer-layout">
         <div className="body-model-stage">
           <div className={`body-model ${bodySide === "back" ? "show-back" : ""}`}>
-            {(["front", "back"] as BodySide[]).map((side) => <div className={`body-face body-${side}`} key={side} aria-hidden={bodySide !== side}><Image src={`/anatomy/body-${side}.png`} alt={`${side} anatomical muscle map`} fill sizes="(max-width: 620px) 74vw, 300px" priority={side === "front"} />{bodyRegions[side].map((region) => <button className={`${region.className} ${bodyPart === region.name ? "selected" : ""}`} key={`${side}-${region.className}`} onClick={() => selectBodyPart(region.name)} aria-label={`Show ${region.name.toLowerCase()} exercises`} tabIndex={bodySide === side ? 0 : -1}><span>{region.name}</span></button>)}</div>)}
+            {(["front", "back"] as BodySide[]).map((side) => {
+              const selectedArtwork = bodyPart ? bodyRegionArtwork[side][bodyPart] : undefined;
+              return <div className={`body-face body-${side}`} key={side} aria-hidden={bodySide !== side}><Image src={selectedArtwork ?? `/anatomy/body-${side}.png`} alt={`${side} anatomical muscle map${selectedArtwork ? ` highlighting ${bodyPart?.toLowerCase()}` : ""}`} fill sizes="(max-width: 620px) 74vw, 300px" priority={side === "front"} /><svg className="muscle-map" viewBox="0 0 100 150" role="group" aria-label={`${side} muscle groups`}>{bodyRegions[side].map((region) => <g className={`muscle-region ${bodyPart === region.name ? "selected" : ""}`} key={`${side}-${region.name}`} role="button" tabIndex={bodySide === side ? 0 : -1} aria-label={`Show ${region.name.toLowerCase()} exercises`} onClick={() => selectBodyPart(region.name)} onKeyDown={(event) => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); selectBodyPart(region.name); } }}><title>{region.name}</title>{region.paths.map((path, index) => <path d={path} key={`${region.name}-${index}`} />)}</g>)}</svg></div>;
+            })}
           </div>
-          <button className="rotate-body" onClick={() => setBodySide((side) => side === "front" ? "back" : "front")}><RotateCcw size={16} /> Rotate to {bodySide === "front" ? "back" : "front"}</button>
+          <button className="rotate-body" onClick={() => showBodySide(bodySide === "front" ? "back" : "front")}><RotateCcw size={16} /> Rotate to {bodySide === "front" ? "back" : "front"}</button>
         </div>
         <div className="body-selection-copy"><span>Selected area</span><h3>{bodyPart ?? "Tap a muscle"}</h3><p>{bodyPart ? `${filtered.length} related exercise${filtered.length === 1 ? "" : "s"} shown below.` : "Choose any highlighted region on the front or back of the body."}</p>{bodyPart && <button onClick={() => setBodyPart(null)}>Clear selection <X size={14} /></button>}</div>
       </div>
@@ -569,13 +633,74 @@ function ProfileView({ profile, savedCount, onRestart }: { profile: OnboardingPr
 }
 
 function ExerciseDetail({ exercise, saved, onSave, onClose, onComplete }: { exercise: ExerciseGuide; saved: boolean; onSave: () => void; onClose: () => void; onComplete: () => void }) {
-  return <div className="modal-backdrop" role="dialog" aria-modal="true"><article className={`exercise-detail accent-${exercise.accent}`}><header><button onClick={onClose}><ArrowLeft /> Back</button><Brand /><button className={saved ? "saved" : ""} onClick={onSave}><Bookmark fill={saved ? "currentColor" : "none"} /></button></header><div className="detail-scroll"><div className="detail-art"><Image src={exercise.image} alt={`${exercise.name} visual guide`} fill sizes="(max-width: 760px) 100vw, 760px" priority /></div><div className="detail-body"><span className="eyebrow">{exercise.collection} · {exercise.level}</span><h1>{exercise.name}</h1><div className="muscle-summary"><div><small>Primary</small><strong>{exercise.primary}</strong></div><div><small>Secondary</small><strong>{exercise.secondary.join(" · ") || "Isolation focus"}</strong></div></div><div className="dose-grid"><div><span>Sets</span><strong>{exercise.sets}</strong></div><div><span>Reps</span><strong>{exercise.reps}</strong></div><div><span>Rest</span><strong>{exercise.rest}</strong></div><div><span>RIR</span><strong>{exercise.rir}</strong></div></div><section className="cue-section"><SectionTitle kicker="Three clear cues" title="Own the movement" /><div>{exercise.steps.map((step, index) => <article key={step.label}><span>{index + 1}</span><div><strong>{step.label}</strong><p>{step.cue}</p></div></article>)}</div></section><div className="detail-meta"><span>Movement<strong>{exercise.movement}</strong></span><span>Equipment<strong>{exercise.equipment}</strong></span><span>Est. energy<strong>{exercise.caloriesPerMinute[0]}–{exercise.caloriesPerMinute[1]} kcal/min</strong></span></div></div></div><footer><button onClick={onComplete}><Check /> Mark guide complete</button></footer></article></div>;
+  useEffect(() => {
+    const previousOverflow = document.body.style.overflow;
+    const closeOnEscape = (event: KeyboardEvent) => { if (event.key === "Escape") onClose(); };
+    document.body.style.overflow = "hidden";
+    window.addEventListener("keydown", closeOnEscape);
+    return () => {
+      document.body.style.overflow = previousOverflow;
+      window.removeEventListener("keydown", closeOnEscape);
+    };
+  }, [onClose]);
+
+  return (
+    <div className="modal-backdrop exercise-drawer-backdrop" role="presentation" onClick={onClose}>
+      <article className={`exercise-detail accent-${exercise.accent}`} role="dialog" aria-modal="true" aria-labelledby="exercise-detail-title" onClick={(event) => event.stopPropagation()}>
+        <div className="drawer-handle" aria-hidden><i /></div>
+        <header>
+          <div><span>Exercise guide</span><strong>{exercise.collection}</strong></div>
+          <div className="drawer-actions"><button className={saved ? "saved" : ""} onClick={onSave} aria-label={saved ? "Remove from saved exercises" : "Save exercise"}><Bookmark fill={saved ? "currentColor" : "none"} /></button><button onClick={onClose} aria-label="Close exercise guide"><X /></button></div>
+        </header>
+        <div className="detail-layout">
+          <aside className="detail-visual">
+            <div className="detail-art"><Image src={exercise.image} alt={`${exercise.name} visual guide`} fill sizes="(max-width: 919px) 100vw, 590px" priority /></div>
+            <div className="detail-visual-caption">
+              <span>Movement demonstration</span>
+              <strong>{exercise.movement}</strong>
+              <small>Start to finish · highlighted working muscles</small>
+            </div>
+          </aside>
+          <div className="detail-info">
+            <div className="detail-body">
+              <div className="detail-intro">
+                <span className="eyebrow">{exercise.primary} · {exercise.level}</span>
+                <h1 id="exercise-detail-title">{exercise.name}</h1>
+                <p>{exercise.equipment} movement with a focus on controlled, repeatable reps.</p>
+              </div>
+
+              <section className="detail-section">
+                <div className="detail-section-heading"><span>Muscles involved</span><h2>Training focus</h2></div>
+                <div className="muscle-summary"><div><small>Primary muscle</small><strong>{exercise.primary}</strong></div><div><small>Secondary muscles</small><strong>{exercise.secondary.join(" · ") || "Isolation focus"}</strong></div></div>
+              </section>
+
+              <section className="detail-section">
+                <div className="detail-section-heading"><span>Prescription</span><h2>Working sets</h2></div>
+                <div className="dose-grid"><div><span>Sets</span><strong>{exercise.sets}</strong></div><div><span>Reps</span><strong>{exercise.reps}</strong></div><div><span>Rest</span><strong>{exercise.rest}</strong></div><div><span>RIR</span><strong>{exercise.rir}</strong></div></div>
+              </section>
+
+              <section className="detail-section cue-section">
+                <div className="detail-section-heading"><span>Three clear cues</span><h2>Own the movement</h2></div>
+                <div>{exercise.steps.map((step, index) => <article key={step.label}><span>{index + 1}</span><div><strong>{step.label}</strong><p>{step.cue}</p></div></article>)}</div>
+              </section>
+
+              <section className="detail-section">
+                <div className="detail-section-heading"><span>Guide details</span><h2>At a glance</h2></div>
+                <div className="detail-meta"><span>Movement<strong>{exercise.movement}</strong></span><span>Equipment<strong>{exercise.equipment}</strong></span><span>Est. energy<strong>{exercise.caloriesPerMinute[0]}–{exercise.caloriesPerMinute[1]} kcal/min</strong></span></div>
+              </section>
+            </div>
+            <footer><button onClick={onComplete}><Check /> Mark guide complete</button></footer>
+          </div>
+        </div>
+      </article>
+    </div>
+  );
 }
 
 function WorkoutSession({ day, onClose, onFinish }: { day: RoutineDay; onClose: () => void; onFinish: (completed: string[], calories: number) => void }) {
   const [completed, setCompleted] = useState<string[]>([]);
   const calories = completed.reduce((total, id) => { const item = day.exercises.find((exercise) => exercise.id === id); return total + (item ? Math.round(((item.caloriesPerMinute[0] + item.caloriesPerMinute[1]) / 2) * 6) : 0); }, 0);
-  return <div className="modal-backdrop workout-backdrop"><article className="workout-session"><header><button onClick={onClose}><X /></button><div><span>Workout in progress</span><strong>{day.name}</strong></div><b>{completed.length}/{day.exercises.length}</b></header><div className="workout-pulse" aria-hidden><i /></div><div className="workout-overview"><div><TimerReset /><span>Estimated time<strong>48 min</strong></span></div><div><Flame /><span>Active energy<strong>{calories} kcal</strong></span></div></div><div className="workout-list">{day.exercises.map((exercise, index) => { const done = completed.includes(exercise.id); return <article key={exercise.id}><div className="workout-thumb"><Image src={exercise.image} alt="" fill sizes="82px" /></div><div><span>Exercise {String(index + 1).padStart(2, "0")}</span><strong>{exercise.name}</strong><small>{exercise.sets} sets · {exercise.reps} reps · {exercise.rest} rest</small></div><button className={done ? "done" : ""} onClick={() => setCompleted((items) => done ? items.filter((id) => id !== exercise.id) : [...items, exercise.id])}>{done ? <Check /> : <Plus />}</button></article>; })}</div><footer><div><span>Session progress</span><strong>{Math.round((completed.length / day.exercises.length) * 100) || 0}%</strong></div><i><b style={{ width: `${(completed.length / day.exercises.length) * 100}%` }} /></i><button disabled={!completed.length} onClick={() => onFinish(completed, calories)}>Finish workout <Check /></button></footer></article></div>;
+  return <div className="modal-backdrop workout-backdrop"><article className="workout-session"><header><button onClick={onClose}><X /></button><div><span>Workout in progress</span><strong>{day.name}</strong></div><b>{completed.length}/{day.exercises.length}</b></header><div className="workout-pulse" aria-hidden><i /></div><div className="workout-overview"><div><TimerReset /><span>Estimated time<strong>48 min</strong></span></div><div><Flame /><span>Active energy<strong>{calories} kcal</strong></span></div></div><div className="workout-list">{day.exercises.map((exercise, index) => { const done = completed.includes(exercise.id); return <article key={exercise.id}><div className="workout-thumb"><Image src={exercise.heroImage} alt={`${exercise.name} starting position`} fill sizes="82px" /></div><div><span>Exercise {String(index + 1).padStart(2, "0")}</span><strong>{exercise.name}</strong><small>{exercise.sets} sets · {exercise.reps} reps · {exercise.rest} rest</small></div><button className={done ? "done" : ""} onClick={() => setCompleted((items) => done ? items.filter((id) => id !== exercise.id) : [...items, exercise.id])}>{done ? <Check /> : <Plus />}</button></article>; })}</div><footer><div><span>Session progress</span><strong>{Math.round((completed.length / day.exercises.length) * 100) || 0}%</strong></div><i><b style={{ width: `${(completed.length / day.exercises.length) * 100}%` }} /></i><button disabled={!completed.length} onClick={() => onFinish(completed, calories)}>Finish workout <Check /></button></footer></article></div>;
 }
 
 export default function FlexFormDashboard() {

@@ -14,6 +14,7 @@ export type ExerciseGuide = {
   equipment: Equipment;
   accent: ExerciseAccent;
   image: string;
+  heroImage: string;
   primary: string;
   secondary: string[];
   sets: string;
@@ -26,13 +27,14 @@ export type ExerciseGuide = {
   steps: [{ label: string; cue: string }, { label: string; cue: string }, { label: string; cue: string }];
 };
 
-type Draft = Omit<ExerciseGuide, "image" | "rir" | "caloriesPerMinute"> & {
+type Draft = Omit<ExerciseGuide, "image" | "heroImage" | "rir" | "caloriesPerMinute"> & {
   caloriesPerMinute?: [number, number];
 };
 
 const guide = (draft: Draft): ExerciseGuide => ({
   ...draft,
   image: `/exercises/generated/${draft.id}-anatomical.png`,
+  heroImage: `/exercises/heroes/${draft.id}-start.png`,
   rir: "1–2",
   caloriesPerMinute: draft.caloriesPerMinute ?? [5, 8],
 });
