@@ -607,15 +607,15 @@ function WorkoutView({ plans, calories, workouts, onOpen, onStart, onCustomize, 
           <div className="routine-plan-list">{plans.map((plan, planIndex) => {
             const scheduledDates = buildScheduledDates(plan.schedule, plan.days.length);
             return <section className="routine-plan-group" key={plan.id}>
-              <header><div><strong>{plan.name}</strong><span>{plan.schedule ? `${plan.schedule.weekdays.join(" · ")} · ${plan.schedule.durationWeeks ? `${plan.schedule.durationWeeks} weeks` : "ongoing"}` : `${plan.days.length} workout${plan.days.length === 1 ? "" : "s"}`}</span></div><button type="button" onClick={() => setDeleteConfirmId(plan.id)} aria-label={`Delete ${plan.name}`}><Trash2 size={15} /></button></header>
               <div className="plan-workout-list">{plan.days.map((day, dayIndex) => {
                 const expandedKey = `${plan.id}:${day.id}`;
                 const expanded = expandedDay === expandedKey;
                 const calories = day.exercises.reduce((total, exercise) => total + Math.round((exercise.caloriesPerMinute[0] + exercise.caloriesPerMinute[1]) * 3), 0);
                 return <article className={expanded ? "expanded" : ""} key={`${plan.id}-${day.id}`}>
                   <button className="plan-workout-summary" onClick={() => setExpandedDay(expanded ? null : expandedKey)} aria-expanded={expanded}>
-                    <div><span className="workout-timing">{scheduledDates[dayIndex] ? scheduledDates[dayIndex].toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric" }) : planIndex === 0 && dayIndex === 0 ? "Today" : "Upcoming"}</span><strong>{day.name}</strong><span className="workout-meta"><small><Clock3 size={13} /> {42 + dayIndex * 3} mins</small><small><Footprints size={13} /> {day.exercises.length} exercises</small><small><Flame size={13} /> {calories} kcal</small></span></div><i><ChevronRight size={18} /></i>
+                    <div><span className="workout-timing">{scheduledDates[dayIndex] ? scheduledDates[dayIndex].toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric" }) : planIndex === 0 && dayIndex === 0 ? "Today" : "Upcoming"}</span><strong>{day.name}</strong><span className="workout-meta"><small><Clock3 size={13} /> {42 + dayIndex * 3} mins</small><small><Footprints size={13} /> {day.exercises.length} exercises</small><small><Flame size={13} /> {calories} kcal</small></span></div>
                   </button>
+                  <button type="button" className="delete-expanded-routine" onClick={() => setDeleteConfirmId(plan.id)} aria-label={`Delete ${plan.name}`}><Trash2 size={15} /></button>
                   <div className="plan-workout-collapse" aria-hidden={!expanded} inert={!expanded}><div><div className="plan-workout-details">{day.exercises.map((exercise, index) => <button key={`${plan.id}-${day.id}-${exercise.id}`} onClick={() => onOpen(exercise)}><span>{String(index + 1).padStart(2, "0")}</span><div><strong>{exercise.name}</strong><small>{exercise.sets} sets · {exercise.reps} reps</small></div><ChevronRight size={15} /></button>)}<button className="start-plan-workout" onClick={() => onStart(day)}>Start workout <ArrowRight size={16} /></button></div></div></div>
                 </article>;
               })}</div>

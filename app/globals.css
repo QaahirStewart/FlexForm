@@ -389,15 +389,9 @@ h1, h2, h3, .brand strong {
 .workout-schedule > header p { color: var(--muted-foreground); font-size: 13px; margin: 3px 0 0; }
 .workout-schedule > header > button { align-items: center; background: var(--brand); border: 0; border-radius: 50%; color: white; display: flex; height: 58px; justify-content: center; width: 58px; }
 .routine-plan-list { display: flex; flex-direction: column; gap: 20px; }
-.routine-plan-group { background: color-mix(in srgb, var(--card) 55%, transparent); border: 1px solid var(--line); border-radius: 23px; padding: 13px; }
-.routine-plan-group > header { align-items: center; display: flex; justify-content: space-between; margin: 1px 2px 11px; }
-.routine-plan-group > header > div { display: flex; flex-direction: column; min-width: 0; }
-.routine-plan-group > header strong { font-size: 14px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.routine-plan-group > header span { color: var(--muted-foreground); font-size: 9px; margin-top: 3px; }
-.routine-plan-group > header button { align-items: center; background: transparent; border: 0; border-radius: 50%; color: var(--muted-foreground); display: flex; height: 34px; justify-content: center; width: 34px; }
-.routine-plan-group > header button:focus-visible { background: var(--muted); color: var(--brand); }
+.routine-plan-group { display: contents; }
 .plan-workout-list { display: flex; flex-direction: column; gap: 9px; }
-.plan-workout-list > article { background: var(--card); border: 1px solid color-mix(in srgb, var(--border) 75%, transparent); border-radius: 19px; overflow: hidden; }
+.plan-workout-list > article { background: var(--card); border: 1px solid color-mix(in srgb, var(--border) 75%, transparent); border-radius: 19px; overflow: hidden; position: relative; }
 .plan-workout-summary { align-items: center; background: transparent; border: 0; color: var(--foreground); display: grid; gap: 10px; grid-template-columns: minmax(0, 1fr) 40px; min-height: 96px; padding: 11px 14px; text-align: left; width: 100%; }
 .plan-workout-summary > div { min-width: 0; }
 .workout-timing { align-items: center; color: var(--muted-foreground); display: flex; font-size: 10px; gap: 8px; margin-bottom: 2px; }
@@ -406,20 +400,20 @@ h1, h2, h3, .brand strong {
 .workout-meta { display: flex; gap: 5px; margin-top: 6px; min-width: 0; overflow: hidden; }
 .workout-meta small { align-items: center; background: var(--muted); border-radius: 999px; color: var(--muted-foreground); display: flex; flex: 0 0 auto; font-size: 9px; gap: 4px; padding: 4px 7px; white-space: nowrap; }
 .workout-meta small svg { height: 11px; width: 11px; }
-.plan-workout-summary > i { align-items: center; background: var(--muted); border-radius: 50%; color: var(--muted-foreground); display: flex; height: 40px; justify-content: center; transition: transform .2s ease; width: 40px; }
-.plan-workout-list > article.expanded .plan-workout-summary > i { transform: rotate(90deg); }
 .plan-workout-collapse { display: grid; grid-template-rows: 0fr; opacity: 0; transition: grid-template-rows .34s cubic-bezier(.2,.75,.2,1), opacity .2s ease; }
 .plan-workout-collapse > div { min-height: 0; overflow: hidden; }
 .plan-workout-list > article.expanded .plan-workout-collapse { grid-template-rows: 1fr; opacity: 1; }
 .plan-workout-details { border-top: 1px solid var(--border); padding: 0 14px 14px; transform: translateY(-8px); transition: transform .34s cubic-bezier(.2,.75,.2,1); }
 .plan-workout-list > article.expanded .plan-workout-details { transform: translateY(0); }
-.plan-workout-details > button:not(.start-plan-workout) { align-items: center; background: transparent; border: 0; border-bottom: 1px solid var(--border); color: var(--foreground); display: grid; gap: 10px; grid-template-columns: 24px 1fr auto; min-height: 57px; padding: 7px 2px; text-align: left; width: 100%; }
+.plan-workout-details > button:not(.start-plan-workout):not(.delete-expanded-routine) { align-items: center; background: transparent; border: 0; border-bottom: 1px solid var(--border); color: var(--foreground); display: grid; gap: 10px; grid-template-columns: 24px 1fr auto; min-height: 57px; padding: 7px 2px; text-align: left; width: 100%; }
 .plan-workout-details > button:not(.start-plan-workout) > span { color: var(--brand); font-family: var(--font-doto), ui-monospace, monospace; font-size: 11px; font-weight: 800; }
 .plan-workout-details > button:not(.start-plan-workout) > div { display: flex; flex-direction: column; }
 .plan-workout-details > button:not(.start-plan-workout) strong { font-size: 12px; }
 .plan-workout-details > button:not(.start-plan-workout) small { color: var(--muted-foreground); font-size: 10px; margin-top: 3px; }
 .plan-workout-details > button:not(.start-plan-workout) > svg { color: var(--muted-foreground); }
 .start-plan-workout { align-items: center; background: var(--inverse); border: 0; border-radius: 999px; color: var(--inverse-fg); display: flex; font-size: 11px; font-weight: 700; gap: 7px; height: 40px; justify-content: center; margin-top: 12px; width: 100%; }
+.delete-expanded-routine { align-items: center; background: color-mix(in srgb, var(--brand) 10%, var(--card)); border: 0; border-radius: 50%; color: var(--brand); display: flex; height: 40px; justify-content: center; position: absolute; right: 14px; top: 28px; width: 40px; z-index: 3; }
+.delete-expanded-routine svg { color: var(--brand); }
 .delete-routine-backdrop { align-items: center; display: flex; justify-content: center; padding: 22px; z-index: 130; }
 .delete-routine-dialog { align-items: center; background: var(--paper); border-radius: 24px; box-shadow: 0 24px 80px rgb(28 28 28 / 28%); display: flex; flex-direction: column; max-width: 380px; padding: 24px 20px 18px; text-align: center; width: 100%; }
 .delete-routine-dialog > span { align-items: center; background: color-mix(in srgb, var(--brand) 10%, var(--card)); border-radius: 50%; color: var(--brand); display: flex; height: 48px; justify-content: center; width: 48px; }
@@ -666,7 +660,7 @@ h1, h2, h3, .brand strong {
 .builder-day-count button { font-family: var(--font-doto), ui-monospace, monospace; font-size: 13px; }
 .builder-day-count button.active, .builder-weekdays button.active { background: var(--inverse); border-color: var(--inverse); color: var(--inverse-fg); }
 .builder-day-count button:disabled { cursor: not-allowed; opacity: .3; }
-.builder-split-days { display: grid; gap: 9px; grid-template-columns: repeat(2, minmax(0, 1fr)); margin-top: 18px; }
+.builder-split-days { display: grid; gap: 9px; grid-template-columns: minmax(0, 1fr); margin-top: 18px; }
 .builder-split-days label { background: var(--card); border: 1px solid var(--line); border-radius: 16px; display: flex; flex-direction: column; padding: 11px 12px; }
 .builder-split-days label > span, .builder-date-field > span { color: var(--muted-foreground); font-size: 8px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; }
 .builder-split-days input { background: transparent; border: 0; color: var(--foreground); font-size: 14px; font-weight: 700; margin: 5px 0 3px; min-width: 0; outline: 0; padding: 0; width: 100%; }
