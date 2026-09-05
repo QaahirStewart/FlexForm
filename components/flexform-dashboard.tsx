@@ -6,7 +6,6 @@ import {
   Apple,
   ArrowLeft,
   ArrowRight,
-  Bell,
   Bookmark,
   Check,
   ChevronRight,
@@ -321,24 +320,17 @@ function greetingForNow() {
   return "Good evening";
 }
 
-function HomeView({ name, routine, saved, onOpen, onSave, onNavigate, onStart }: { name: string; routine: RoutineDay[]; saved: string[]; onOpen: (exercise: ExerciseGuide) => void; onSave: (id: string) => void; onNavigate: (view: View) => void; onStart: (day: RoutineDay) => void }) {
+function HomeView({ routine, saved, onOpen, onSave, onNavigate, onStart }: { routine: RoutineDay[]; saved: string[]; onOpen: (exercise: ExerciseGuide) => void; onSave: (id: string) => void; onNavigate: (view: View) => void; onStart: (day: RoutineDay) => void }) {
   const today = routine[0];
-  const [hello, setHello] = useState("Hello");
-  const [dateLabel, setDateLabel] = useState("");
   const [ticks, setTicks] = useState<string[]>([]);
   useEffect(() => {
-    setHello(greetingForNow());
-    setDateLabel(new Date().toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric" }));
     setTicks(buildDateTicks(ACTIVITY_DAYS));
   }, []);
   return <>
     <section className="home-greeting">
       <div>
-        <span>{hello}, {name}</span>
         <h1>Ready to put<br />the work in?</h1>
-        <small className="home-date">{dateLabel}</small>
       </div>
-      <button type="button" aria-label="Notifications"><Bell size={19} /><i /></button>
     </section>
     <section className="today-card">
       <div className="today-top"><span><Zap size={13} /> Today’s workout</span><b>{today?.exercises.length ?? 0} exercises · ~52 min</b></div>
@@ -361,7 +353,7 @@ function HomeView({ name, routine, saved, onOpen, onSave, onNavigate, onStart }:
       <CardContent className="space-y-3">
         <header><span>Weekly output</span><strong>Activity</strong></header>
         <DotMatrixChart values={activitySeries} ticks={ticks} />
-        <DateStrip days={29} onChange={(day) => setDateLabel(formatLongDate(day.iso))} />
+        <DateStrip days={29} />
       </CardContent>
     </Card>
     <div className="stats-board">
@@ -862,6 +854,13 @@ export default function FlexFormDashboard() {
   const [toast, setToast] = useState("");
   const [calories, setCalories] = useState(0);
   const [workouts, setWorkouts] = useState(0);
+  const [headerGreeting, setHeaderGreeting] = useState("Hello");
+  const [headerDate, setHeaderDate] = useState("");
+
+  useEffect(() => {
+    setHeaderGreeting(greetingForNow());
+    setHeaderDate(new Date().toLocaleDateString("en-GB", { weekday: "long", day: "numeric", month: "long" }));
+  }, []);
 
   const notify = (message: string) => { setToast(message); window.setTimeout(() => setToast(""), 2600); };
   const overlayOpen = Boolean(selected || activeWorkout || mealLoggerOpen);
@@ -935,8 +934,6 @@ export default function FlexFormDashboard() {
   if (stage === "onboarding") return <Onboarding displayName={displayName} onComplete={finishOnboarding} />;
 
   const workoutArea = view === "Workout";
-  const sectionHeader = view === "Workout" ? { icon: Dumbbell, label: "Workout" } : view === "Meal" ? { icon: Apple, label: "Meal" } : null;
-  const SectionIcon = sectionHeader?.icon;
 
-  return <div className="app-shell"><header className={`app-header ${workoutArea ? "plan-app-header" : ""}`}>{sectionHeader && SectionIcon ? <div className="app-section-name"><SectionIcon size={25} /><strong>{sectionHeader.label}</strong></div> : <Brand />}<div><ThemeControls compact />{view === "Workout" && <button className="header-notification" aria-label="Notifications"><Bell size={18} /><i /></button>}<span>{profile.goal}</span><button onClick={() => navigate("Profile")}>{profile.displayName.slice(0, 2).toUpperCase()}</button></div></header><main className={`app-content ${workoutArea ? "plan-content" : ""}`}>{view === "Home" && <HomeView name={profile.displayName} routine={routine} saved={saved} onOpen={setSelected} onSave={toggleSaved} onNavigate={navigate} onStart={setActiveWorkout} />}{view === "Workout" && <WorkoutView routine={routine} calories={calories} workouts={workouts} onOpen={setSelected} onStart={setActiveWorkout} onCustomize={() => { setBuilderMode(true); setCustomSelection(routine.flatMap((day) => day.exercises.map((exercise) => exercise.id))); navigate("Library"); }} />}{view === "Library" && <LibraryView saved={saved} builderMode={builderMode} customSelection={customSelection} onOpen={setSelected} onSave={toggleSaved} onToggleSelection={(id) => setCustomSelection((items) => items.includes(id) ? items.filter((item) => item !== id) : [...items, id])} onSaveRoutine={saveCustomRoutine} />}{view === "Meal" && <MealView meals={meals} onOpenLogger={() => setMealLoggerOpen(true)} />}{view === "Profile" && <ProfileView profile={profile} savedCount={saved.length} onRestart={() => { void signOut(); setStage("auth"); }} />}</main><nav className="floating-nav">{navItems.map(({ label, icon: Icon }) => <button key={label} className={view === label || (view === "Library" && label === "Workout") ? "active" : ""} onClick={() => navigate(label)}><Icon size={19} /><span>{label}</span></button>)}</nav>{selected && <ExerciseDetail exercise={selected} saved={saved.includes(selected.id)} onSave={() => toggleSaved(selected.id)} onClose={() => setSelected(null)} onComplete={() => { void saveGuideCompletion(selected.id).catch(() => undefined); setSelected(null); notify("Guide complete. Clean reps win."); }} />}{activeWorkout && <WorkoutSession day={activeWorkout} onClose={() => setActiveWorkout(null)} onFinish={(completed, burned) => { void saveWorkoutSummary(activeWorkout.id, activeWorkout.name, completed, burned).catch(() => undefined); setCalories((value) => value + burned); setWorkouts((value) => value + 1); setActiveWorkout(null); notify(`${completed.length} exercises logged · ${burned} kcal estimated`); }} />}{mealLoggerOpen && <MealLoggerDrawer onClose={closeMealLogger} onAdd={addMeal} />}{toast && <div className="toast"><Check size={15} />{toast}</div>}</div>;
+  return <div className="app-shell"><header className={`app-header ${workoutArea ? "plan-app-header" : ""}`}><div className="app-header-greeting"><Sparkles className="app-header-mark" size={27} /><div><strong>{headerGreeting}, {profile.displayName}</strong><span>{headerDate}</span></div></div><div className="app-header-actions"><button className="header-profile" onClick={() => navigate("Profile")} aria-label="Open profile"><UserRound size={21} /></button></div></header><main className={`app-content ${workoutArea ? "plan-content" : ""}`}>{view === "Home" && <HomeView routine={routine} saved={saved} onOpen={setSelected} onSave={toggleSaved} onNavigate={navigate} onStart={setActiveWorkout} />}{view === "Workout" && <WorkoutView routine={routine} calories={calories} workouts={workouts} onOpen={setSelected} onStart={setActiveWorkout} onCustomize={() => { setBuilderMode(true); setCustomSelection(routine.flatMap((day) => day.exercises.map((exercise) => exercise.id))); navigate("Library"); }} />}{view === "Library" && <LibraryView saved={saved} builderMode={builderMode} customSelection={customSelection} onOpen={setSelected} onSave={toggleSaved} onToggleSelection={(id) => setCustomSelection((items) => items.includes(id) ? items.filter((item) => item !== id) : [...items, id])} onSaveRoutine={saveCustomRoutine} />}{view === "Meal" && <MealView meals={meals} onOpenLogger={() => setMealLoggerOpen(true)} />}{view === "Profile" && <ProfileView profile={profile} savedCount={saved.length} onRestart={() => { void signOut(); setStage("auth"); }} />}</main><nav className="floating-nav">{navItems.map(({ label, icon: Icon }) => <button key={label} className={view === label || (view === "Library" && label === "Workout") ? "active" : ""} onClick={() => navigate(label)}><Icon size={19} /><span>{label}</span></button>)}</nav>{selected && <ExerciseDetail exercise={selected} saved={saved.includes(selected.id)} onSave={() => toggleSaved(selected.id)} onClose={() => setSelected(null)} onComplete={() => { void saveGuideCompletion(selected.id).catch(() => undefined); setSelected(null); notify("Guide complete. Clean reps win."); }} />}{activeWorkout && <WorkoutSession day={activeWorkout} onClose={() => setActiveWorkout(null)} onFinish={(completed, burned) => { void saveWorkoutSummary(activeWorkout.id, activeWorkout.name, completed, burned).catch(() => undefined); setCalories((value) => value + burned); setWorkouts((value) => value + 1); setActiveWorkout(null); notify(`${completed.length} exercises logged · ${burned} kcal estimated`); }} />}{mealLoggerOpen && <MealLoggerDrawer onClose={closeMealLogger} onAdd={addMeal} />}{toast && <div className="toast"><Check size={15} />{toast}</div>}</div>;
 }
