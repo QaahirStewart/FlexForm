@@ -59,6 +59,8 @@ function DotColumn({ value, max, rows }: { value: number; max: number; rows: num
 export function DotMatrixChart({
   values,
   ticks,
+  tickValues,
+  maxValue,
   rows = 14,
   dotSize = 4,
   gap = 3,
@@ -67,6 +69,8 @@ export function DotMatrixChart({
 }: {
   values: number[];
   ticks?: string[];
+  tickValues?: string[];
+  maxValue?: number;
   rows?: number;
   dotSize?: number;
   gap?: number;
@@ -74,7 +78,7 @@ export function DotMatrixChart({
   className?: string;
 }) {
   const [plotRef, columns] = useColumnCount(dotSize + gap, gap);
-  const max = Math.max(...values, 1);
+  const max = maxValue ?? Math.max(...values, 1);
 
   const series = useMemo(() => (columns ? resample(values, columns) : []), [columns, values]);
   const span = columns ? Math.max(3, Math.floor(columns / values.length) - 2) : 0;
@@ -89,7 +93,7 @@ export function DotMatrixChart({
       <div className={cn("dot-matrix-plot", fit === "block" && "blocks")} ref={plotRef} aria-hidden>
         {fit === "block"
           ? values.map((value, index) => (
-              <div className="dot-matrix-block" key={index} style={{ gridTemplateColumns: `repeat(${span}, minmax(0, 1fr))` }}>
+              <div className="dot-matrix-block" key={index} style={{ gridTemplateColumns: `repeat(${span}, var(--dot-size))` }}>
                 {Array.from({ length: span }, (_, column) => (
                   <DotColumn key={column} value={value} max={max} rows={rows} />
                 ))}
@@ -100,7 +104,10 @@ export function DotMatrixChart({
       {ticks?.length ? (
         <figcaption className={cn("dot-matrix-ticks", fit === "block" && "blocks")}>
           {ticks.map((tick, index) => (
-            <span key={`${tick}-${index}`}>{tick}</span>
+            <span key={`${tick}-${index}`}>
+              <strong>{tick}</strong>
+              {tickValues?.[index] && <small>{tickValues[index]}</small>}
+            </span>
           ))}
         </figcaption>
       ) : null}

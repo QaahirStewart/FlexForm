@@ -15,8 +15,8 @@ function toIso(date: Date) {
 }
 
 /** Evenly spaced "02 Jun" style ticks for a series of `count` days ending today. */
-export function buildDateTicks(count: number, ticks = 6) {
-  const today = new Date();
+export function buildDateTicks(count: number, ticks = 6, endIso?: string) {
+  const today = endIso ? new Date(`${endIso}T12:00:00`) : new Date();
   return Array.from({ length: ticks }, (_, index) => {
     const date = new Date(today);
     date.setDate(today.getDate() - (count - 1) + Math.round((index * (count - 1)) / (ticks - 1)));
@@ -28,12 +28,12 @@ export function formatLongDate(iso: string) {
   return new Date(`${iso}T00:00:00`).toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric" });
 }
 
-function buildDays(count: number): StripDay[] {
+function buildDays(count: number, mode: "centered" | "past"): StripDay[] {
   const today = new Date();
-  const half = Math.floor(count / 2);
+  const offset = mode === "past" ? count - 1 : Math.floor(count / 2);
   return Array.from({ length: count }, (_, index) => {
     const date = new Date(today);
-    date.setDate(today.getDate() - half + index);
+    date.setDate(today.getDate() - offset + index);
     return {
       iso: toIso(date),
       day: date.getDate(),
@@ -49,11 +49,13 @@ function buildDays(count: number): StripDay[] {
  */
 export function DateStrip({
   days = 21,
+  mode = "centered",
   value,
   onChange,
   className,
 }: {
   days?: number;
+  mode?: "centered" | "past";
   value?: string;
   onChange?: (day: StripDay) => void;
   className?: string;
@@ -61,16 +63,19 @@ export function DateStrip({
   const trackRef = useRef<HTMLDivElement>(null);
   const nodesRef = useRef<Array<HTMLButtonElement | null>>([]);
   const dragRef = useRef({ pointer: -1, startX: 0, startLeft: 0, moved: false });
-  const settleRef = useRef<number | null>(null);
+  const scrollFrameRef = useRef<number | null>(null);
+  const activeRef = useRef(0);
 
   const [items, setItems] = useState<StripDay[]>([]);
   const [active, setActive] = useState(0);
   const [dragging, setDragging] = useState(false);
 
   useEffect(() => {
-    setItems(buildDays(days));
-    setActive(Math.floor(days / 2));
-  }, [days]);
+    setItems(buildDays(days, mode));
+    const initial = mode === "past" ? days - 1 : Math.floor(days / 2);
+    activeRef.current = initial;
+    setActive(initial);
+  }, [days, mode]);
 
   const centerOn = useCallback((index: number, behavior: ScrollBehavior = "smooth") => {
     const track = trackRef.current;
@@ -81,9 +86,9 @@ export function DateStrip({
 
   const nearestIndex = useCallback(() => {
     const track = trackRef.current;
-    if (!track) return active;
+    if (!track) return activeRef.current;
     const center = track.scrollLeft + track.clientWidth / 2;
-    let closest = active;
+    let closest = activeRef.current;
     let smallest = Number.POSITIVE_INFINITY;
     nodesRef.current.forEach((node, index) => {
       if (!node) return;
@@ -94,48 +99,51 @@ export function DateStrip({
       }
     });
     return closest;
-  }, [active]);
+  }, []);
 
   const select = useCallback(
     (index: number, behavior: ScrollBehavior = "smooth") => {
       const day = items[index];
       if (!day) return;
       centerOn(index, behavior);
-      if (index === active) return;
+      if (index === activeRef.current) return;
+      activeRef.current = index;
       setActive(index);
       onChange?.(day);
     },
-    [active, centerOn, items, onChange],
+    [centerOn, items, onChange],
   );
 
   // Centre the initial day once the rail has rendered.
   useEffect(() => {
-    if (items.length) centerOn(Math.floor(items.length / 2), "auto");
-  }, [centerOn, items.length]);
+    if (items.length) centerOn(mode === "past" ? items.length - 1 : Math.floor(items.length / 2), "auto");
+  }, [centerOn, items.length, mode]);
 
   // Follow a controlled value.
   useEffect(() => {
     if (!value || !items.length) return;
     const index = items.findIndex((item) => item.iso === value);
-    if (index >= 0 && index !== active) {
+    if (index >= 0 && index !== activeRef.current) {
+      activeRef.current = index;
       setActive(index);
       centerOn(index);
     }
-  }, [active, centerOn, items, value]);
+  }, [centerOn, items, value]);
 
   useEffect(() => () => {
-    if (settleRef.current) window.clearTimeout(settleRef.current);
+    if (scrollFrameRef.current) window.cancelAnimationFrame(scrollFrameRef.current);
   }, []);
 
   const handleScroll = () => {
-    if (dragging) return;
-    if (settleRef.current) window.clearTimeout(settleRef.current);
-    settleRef.current = window.setTimeout(() => {
+    if (scrollFrameRef.current) return;
+    scrollFrameRef.current = window.requestAnimationFrame(() => {
+      scrollFrameRef.current = null;
       const index = nearestIndex();
-      if (index === active || !items[index]) return;
+      if (index === activeRef.current || !items[index]) return;
+      activeRef.current = index;
       setActive(index);
       onChange?.(items[index]);
-    }, 90);
+    });
   };
 
   const handlePointerDown = (event: React.PointerEvent<HTMLDivElement>) => {

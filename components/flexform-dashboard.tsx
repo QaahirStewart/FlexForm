@@ -6,9 +6,7 @@ import {
   Apple,
   ArrowLeft,
   ArrowRight,
-  BarChart3,
   Bell,
-  BookOpen,
   Bookmark,
   Check,
   ChevronRight,
@@ -22,10 +20,12 @@ import {
   LockKeyhole,
   LogOut,
   Mail,
+  Mic,
   Minus,
   Play,
   Plus,
   RotateCcw,
+  ScanLine,
   Search,
   Sparkles,
   Target,
@@ -33,10 +33,11 @@ import {
   Trophy,
   UserRound,
   Utensils,
+  Upload,
   X,
   Zap,
 } from "lucide-react";
-import { FormEvent, useEffect, useMemo, useState } from "react";
+import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   bodyAreas,
   buildRoutine,
@@ -59,14 +60,23 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
 type AppStage = "auth" | "onboarding" | "app";
-type View = "Home" | "Plan" | "Library" | "Progress" | "Profile";
+type View = "Home" | "Workout" | "Library" | "Meal" | "Profile";
 type RoutineDay = ReturnType<typeof buildRoutine>[number];
+type MealKind = "Breakfast" | "Lunch" | "Dinner" | "Snack";
+type MealEntry = { id: string; type: MealKind; time: string; title: string; calories: number; protein: number };
+type MealDraft = Omit<MealEntry, "id">;
+
+const mealIcons = { Breakfast: Coffee, Lunch: Utensils, Dinner: Utensils, Snack: Apple };
+const initialMeals: MealEntry[] = [
+  { id: "breakfast-1", type: "Breakfast", time: "08:32 am", title: "Greek yogurt · Berries · Granola", calories: 420, protein: 24 },
+  { id: "lunch-1", type: "Lunch", time: "12:48 pm", title: "Chicken bowl · Rice · Greens", calories: 640, protein: 48 },
+  { id: "snack-1", type: "Snack", time: "04:10 pm", title: "Apple · Almonds", calories: 210, protein: 6 },
+];
 
 const navItems = [
   { label: "Home" as const, icon: Home },
-  { label: "Plan" as const, icon: Dumbbell },
-  { label: "Library" as const, icon: BookOpen },
-  { label: "Progress" as const, icon: BarChart3 },
+  { label: "Workout" as const, icon: Dumbbell },
+  { label: "Meal" as const, icon: Apple },
 ];
 
 const goals: Array<{ value: Goal; copy: string }> = [
@@ -292,6 +302,18 @@ const activitySeries = Array.from({ length: ACTIVITY_DAYS }, (_, index) => {
   return Math.max(8, Math.round(28 + season + (noise > 0.85 ? noise * 48 : noise * 18)));
 });
 
+function buildMockActivitySeries(endIso: string, count: number) {
+  const millisecondsPerDay = 86_400_000;
+  const endDay = Math.floor(Date.parse(`${endIso}T00:00:00Z`) / millisecondsPerDay);
+  return Array.from({ length: count }, (_, index) => {
+    const day = endDay - count + 1 + index;
+    const noise = ((Math.sin(day * 12.9898) * 43758.5453) % 1 + 1) % 1;
+    const season = Math.sin(day / 13) * 12 + Math.sin(day / 4.3) * 7;
+    if (noise < 0.2) return Math.max(6, Math.round(10 + season / 3));
+    return Math.min(100, Math.max(8, Math.round(28 + season + (noise > 0.85 ? noise * 48 : noise * 18))));
+  });
+}
+
 function greetingForNow() {
   const hour = new Date().getHours();
   if (hour < 12) return "Good morning";
@@ -364,18 +386,29 @@ function HomeView({ name, routine, saved, onOpen, onSave, onNavigate, onStart }:
   </>;
 }
 
-function PlanView({ routine, onOpen, onStart, onCustomize }: { routine: RoutineDay[]; onOpen: (exercise: ExerciseGuide) => void; onStart: (day: RoutineDay) => void; onCustomize: () => void }) {
+function WorkoutView({ routine, calories, workouts, onOpen, onStart, onCustomize }: { routine: RoutineDay[]; calories: number; workouts: number; onOpen: (exercise: ExerciseGuide) => void; onStart: (day: RoutineDay) => void; onCustomize: () => void }) {
   const [range, setRange] = useState("week");
   const [expandedDay, setExpandedDay] = useState<string | null>(null);
+  const [selectedActivityDate, setSelectedActivityDate] = useState("");
+  const activityDays = range === "today" ? 7 : ACTIVITY_DAYS;
+  const displayedActivity = useMemo(() => selectedActivityDate ? buildMockActivitySeries(selectedActivityDate, activityDays) : activitySeries.slice(-activityDays), [activityDays, selectedActivityDate]);
+  const activityTicks = useMemo(() => buildDateTicks(activityDays, 6, selectedActivityDate || undefined), [activityDays, selectedActivityDate]);
   const activeMinutes = Math.max(0, 80 + Math.max(0, routine.length - 1) * 60);
   const completedWorkouts = Math.max(0, routine.length - 1);
   const scheduleOrder = [1, 3, 4, 6, 2, 5, 0];
   const completedDays = new Set(scheduleOrder.slice(0, completedWorkouts));
   const plannedDays = new Set(scheduleOrder.slice(0, routine.length));
   const weekDays = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
-
+  const selectActivityDate = (nextDate: string) => {
+    if (nextDate === selectedActivityDate) return;
+    setSelectedActivityDate(nextDate);
+  };
   return (
     <section className="plan-view">
+      <div className="view-heading workout-view-heading">
+        <h1>Workout.</h1>
+        <p>Your plan, progress, and sessions in one simple view.</p>
+      </div>
       <Tabs value={range} onValueChange={(value) => setRange(String(value ?? "week"))} className="plan-range-tabs">
         <TabsList>
           <TabsTrigger value="today">Today</TabsTrigger>
@@ -383,22 +416,20 @@ function PlanView({ routine, onOpen, onStart, onCustomize }: { routine: RoutineD
         </TabsList>
       </Tabs>
 
-      <div className="plan-metrics" aria-label={`${range === "today" ? "Today's" : "This week's"} workout totals`}>
-        <article>
-          <Clock3 size={17} />
-          <span>Active time</span>
-          <strong>{range === "today" ? "45" : `${Math.floor(activeMinutes / 60)}h ${activeMinutes % 60}`}<small>{range === "today" ? "m" : "m"}</small></strong>
-        </article>
-        <article>
-          <Footprints size={18} />
-          <span>Steps</span>
-          <strong>{range === "today" ? "7,842" : "38,420"}</strong>
-        </article>
-        <article>
-          <Dumbbell size={18} />
-          <span>Workouts</span>
-          <strong>{range === "today" ? (routine.length ? 1 : 0) : completedWorkouts}</strong>
-        </article>
+      <div className="progress-hero workout-progress-hero">
+        <div>
+          <span>{range === "today" ? "Today's training" : "Weekly adherence"}</span>
+          <strong>{range === "today" ? (routine.length ? "1" : "0") : `${Math.min(100, 75 + workouts * 5)}%`}</strong>
+          <p>{range === "today" ? (routine.length ? "One focused session is ready to go." : "Build a routine to start training.") : workouts ? "Workout logged. Keep the streak moving." : "Three of four planned sessions complete."}</p>
+        </div>
+        <div className="progress-ring"><b>{range === "today" ? (routine.length ? 1 : 0) : 3 + workouts}<small>/ {range === "today" ? 1 : 4}</small></b></div>
+      </div>
+
+      <div className="metric-grid workout-metric-grid" aria-label={`${range === "today" ? "Today's" : "This week's"} workout totals`}>
+        <article><Flame /><span>Active calories</span><strong>{range === "today" ? 486 + calories : 2160 + calories}</strong><small>{range === "today" ? "Today · kcal" : "This week · kcal"}</small></article>
+        <article><Activity /><span>Daily movement</span><strong>{range === "today" ? "7842" : "38.4k"}</strong><small>Steps</small></article>
+        <article><TimerReset /><span>Training time</span><strong>{range === "today" ? 45 : activeMinutes + workouts * 48}</strong><small>Minutes</small></article>
+        <article><Trophy /><span>Workouts</span><strong>{range === "today" ? (routine.length ? 1 : 0) : 12 + workouts}</strong><small>{range === "today" ? "Planned today" : "This month"}</small></article>
       </div>
 
       <section className="checkin-section" aria-labelledby="checkin-title">
@@ -409,13 +440,29 @@ function PlanView({ routine, onOpen, onStart, onCustomize }: { routine: RoutineD
             const planned = plannedDays.has(index);
             return (
               <div className={`${complete ? "complete" : ""} ${planned && !complete ? "planned" : ""}`} key={label}>
-                <span>{complete ? <Check size={13} /> : <i />}</span>
+                <span>{complete ? <Check size={13} /> : planned ? <Dumbbell size={12} /> : <i />}</span>
                 <small>{label}</small>
               </div>
             );
           })}
         </div>
       </section>
+
+      <Card className="matrix-panel workout-activity-panel gap-0 rounded-[28px] py-0 ring-foreground/5">
+        <CardContent>
+          <header className="activity-history-header">
+            <span>Training load</span>
+            <div><strong>{range === "today" ? "Recent output" : "Activity history"}</strong><small>Active minutes per day · 0–100 min · {selectedActivityDate ? `ending ${formatLongDate(selectedActivityDate)}` : `latest ${activityDays} days`}</small></div>
+          </header>
+          <div className="activity-chart-layout">
+            <div className="activity-scale" aria-hidden><span>100</span><span>50</span><span>0</span></div>
+            <div className="activity-chart-motion">
+              <DotMatrixChart values={displayedActivity} maxValue={100} ticks={activityTicks} />
+            </div>
+          </div>
+          {range === "week" && <DateStrip className="activity-date-strip" days={121} mode="past" value={selectedActivityDate || undefined} onChange={(day) => selectActivityDate(day.iso)} />}
+        </CardContent>
+      </Card>
 
       <section className="workout-schedule" aria-labelledby="workouts-title">
         <header>
@@ -448,18 +495,20 @@ function PlanView({ routine, onOpen, onStart, onCustomize }: { routine: RoutineD
                     </div>
                     <i><ChevronRight size={18} /></i>
                   </button>
-                  {expanded && (
-                    <div className="plan-workout-details">
-                      {day.exercises.map((exercise, index) => (
-                        <button key={`${day.id}-${exercise.id}`} onClick={() => onOpen(exercise)}>
-                          <span>{String(index + 1).padStart(2, "0")}</span>
-                          <div><strong>{exercise.name}</strong><small>{exercise.sets} sets · {exercise.reps} reps</small></div>
-                          <ChevronRight size={15} />
-                        </button>
-                      ))}
-                      <button className="start-plan-workout" onClick={() => onStart(day)}>Start workout <ArrowRight size={16} /></button>
+                  <div className="plan-workout-collapse" aria-hidden={!expanded} inert={!expanded}>
+                    <div>
+                      <div className="plan-workout-details">
+                        {day.exercises.map((exercise, index) => (
+                          <button key={`${day.id}-${exercise.id}`} onClick={() => onOpen(exercise)}>
+                            <span>{String(index + 1).padStart(2, "0")}</span>
+                            <div><strong>{exercise.name}</strong><small>{exercise.sets} sets · {exercise.reps} reps</small></div>
+                            <ChevronRight size={15} />
+                          </button>
+                        ))}
+                        <button className="start-plan-workout" onClick={() => onStart(day)}>Start workout <ArrowRight size={16} /></button>
+                      </div>
                     </div>
-                  )}
+                  </div>
                 </article>
               );
             })}
@@ -519,77 +568,176 @@ function LibraryView({ saved, builderMode, customSelection, onOpen, onSave, onTo
     <SearchField value={query} onChange={setQuery} /><div className="filter-panel"><div><span>Body area</span><div className="filter-pills">{bodyAreas.map((item) => <button className={area === item ? "active" : ""} key={item} onClick={() => { setArea(item); setBodyPart(null); }}>{item}</button>)}</div></div><div className="select-filters"><label><span>Muscle</span><select value={muscle} onChange={(event) => { setMuscle(event.target.value as typeof muscle); setBodyPart(null); }}>{muscleGroups.map((item) => <option key={item}>{item}</option>)}</select></label><label><span>Equipment</span><select value={equipment} onChange={(event) => setEquipment(event.target.value as typeof equipment)}>{equipmentOptions.map((item) => <option key={item}>{item}</option>)}</select></label><label><span>Difficulty</span><select value={difficulty} onChange={(event) => setDifficulty(event.target.value as typeof difficulty)}>{difficultyOptions.map((item) => <option key={item}>{item}</option>)}</select></label></div></div><SectionTitle kicker={bodyPart ? `${filtered.length} ${bodyPart.toLowerCase()} movement${filtered.length === 1 ? "" : "s"}` : `${filtered.length} movement${filtered.length === 1 ? "" : "s"}`} title={bodyPart ? `Train your ${bodyPart.toLowerCase()}` : "Explore the index"} action={<button className="text-button" onClick={clear}>Reset filters</button>} />{filtered.length ? <div className="exercise-grid">{filtered.map((exercise) => <ExerciseCard key={exercise.id} exercise={exercise} saved={saved.includes(exercise.id)} selected={customSelection.includes(exercise.id)} onOpen={() => onOpen(exercise)} onSave={() => onSave(exercise.id)} onAdd={builderMode ? () => onToggleSelection(exercise.id) : undefined} />)}</div> : <div className="empty-state"><Search /><h2>No exact match</h2><p>Reset the filters or broaden the body area.</p><button className="primary-button" onClick={clear}>Reset filters</button></div>}</section>;
 }
 
-function ProgressView({ calories, workouts }: { calories: number; workouts: number }) {
-  const [range, setRange] = useState("week");
-  const [ticks, setTicks] = useState<string[]>([]);
-  const nutrients = [42, 18, 15, 13, 11, 8];
-  useEffect(() => setTicks(buildDateTicks(ACTIVITY_DAYS)), []);
-  const meals = [
-    { icon: Coffee, type: "Breakfast", time: "08:32 am", title: "Greek yogurt · Berries · Granola", meta: "420 kcal · 24g protein" },
-    { icon: Utensils, type: "Lunch", time: "12:48 pm", title: "Chicken bowl · Rice · Greens", meta: "640 kcal · 48g protein" },
-    { icon: Apple, type: "Snack", time: "04:10 pm", title: "Apple · Almonds", meta: "210 kcal · 6g protein" },
-  ];
+function MealLoggerDrawer({ onClose, onAdd }: { onClose: () => void; onAdd: (meal: MealDraft) => void }) {
+  const [type, setType] = useState<MealKind>("Breakfast");
+  const [mealName, setMealName] = useState("");
+  const [items, setItems] = useState("");
+  const [calories, setCalories] = useState("");
+  const [protein, setProtein] = useState("");
+  const [time, setTime] = useState(() => new Date().toTimeString().slice(0, 5));
+  const [captureMode, setCaptureMode] = useState<"upload" | "scan" | "voice" | null>(null);
+  const [closing, setClosing] = useState(false);
+  const closingRef = useRef(false);
+  const closeTimerRef = useRef<number | null>(null);
+
+  const requestClose = useCallback(() => {
+    if (closingRef.current) return;
+    closingRef.current = true;
+    setClosing(true);
+    const delay = window.matchMedia("(prefers-reduced-motion: reduce)").matches ? 0 : 260;
+    closeTimerRef.current = window.setTimeout(onClose, delay);
+  }, [onClose]);
+
+  useEffect(() => {
+    const closeOnEscape = (event: KeyboardEvent) => { if (event.key === "Escape") requestClose(); };
+    window.addEventListener("keydown", closeOnEscape);
+    return () => {
+      window.removeEventListener("keydown", closeOnEscape);
+      if (closeTimerRef.current) window.clearTimeout(closeTimerRef.current);
+    };
+  }, [requestClose]);
+
+  const submit = (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (!mealName.trim() || !calories || !protein) return;
+    const itemList = items.trim().replace(/\s*[,\n]+\s*/g, " · ");
+    const [hours, minutes] = time.split(":").map(Number);
+    const displayTime = new Date(2000, 0, 1, hours, minutes).toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit", hour12: true }).toLowerCase();
+    onAdd({ type, time: displayTime, title: `${mealName.trim()}${itemList ? ` · ${itemList}` : ""}`, calories: Number(calories), protein: Number(protein) });
+    requestClose();
+  };
+
+  const captureHint = captureMode === "scan" ? "List the items you scanned…" : captureMode === "voice" ? "Type or dictate the ingredients…" : captureMode === "upload" ? "List the items in your photo…" : "e.g. Rice, greens, avocado…";
+  const mealTypes = ["Breakfast", "Lunch", "Dinner", "Snack"] as MealKind[];
+
+  return (
+    <div className={`modal-backdrop meal-logger-backdrop ${closing ? "closing" : ""}`} role="presentation" onClick={requestClose}>
+      <section className="meal-logger-drawer" role="dialog" aria-modal="true" aria-labelledby="meal-logger-title" onClick={(event) => event.stopPropagation()}>
+        <div className="drawer-handle" aria-hidden><i /></div>
+        <header>
+          <div>
+            <h2 id="meal-logger-title">Log a meal</h2>
+            <p>Record what you ate and when</p>
+          </div>
+          <button type="button" onClick={requestClose} aria-label="Close meal logger"><X size={18} /></button>
+        </header>
+        <form onSubmit={submit}>
+          <fieldset>
+            <legend>When did you eat?</legend>
+            <div className="meal-type-grid">
+              {mealTypes.map((item) => (
+                <button type="button" className={type === item ? "active" : ""} aria-pressed={type === item} key={item} onClick={() => setType(item)}>
+                  {item}
+                </button>
+              ))}
+            </div>
+          </fieldset>
+          <label className="meal-name-field">
+            <span>Meal name</span>
+            <input value={mealName} onChange={(event) => setMealName(event.target.value)} placeholder="e.g. Chicken bowl" autoFocus required />
+          </label>
+          <label className="meal-description-field">
+            <span>Items or ingredients</span>
+            <textarea value={items} onChange={(event) => setItems(event.target.value)} placeholder={captureHint} rows={3} />
+          </label>
+          <div className="meal-number-fields">
+            <label className="meal-time-row">
+              <span>Time</span>
+              <div>
+                <input className="dot-num meal-time-input" type="time" value={time} onChange={(event) => setTime(event.target.value)} required />
+              </div>
+            </label>
+            <label>
+              <span>Calories</span>
+              <div>
+                <input className="dot-num" type="number" inputMode="numeric" min="0" value={calories} onChange={(event) => setCalories(event.target.value)} placeholder="0" required />
+                <small>kcal</small>
+              </div>
+            </label>
+            <label>
+              <span>Protein</span>
+              <div>
+                <input className="dot-num" type="number" inputMode="numeric" min="0" value={protein} onChange={(event) => setProtein(event.target.value)} placeholder="0" required />
+                <small>grams</small>
+              </div>
+            </label>
+          </div>
+          <div className="meal-capture-row" aria-label="Meal input options">
+            <button type="button" className={captureMode === "upload" ? "active" : ""} aria-pressed={captureMode === "upload"} onClick={() => setCaptureMode((current) => current === "upload" ? null : "upload")}>
+              <Upload size={16} />
+              <span className="sr-only">Photo</span>
+            </button>
+            <button type="button" className={captureMode === "scan" ? "active" : ""} aria-pressed={captureMode === "scan"} onClick={() => setCaptureMode((current) => current === "scan" ? null : "scan")}>
+              <ScanLine size={16} />
+              <span className="sr-only">Scan</span>
+            </button>
+            <button type="button" className={captureMode === "voice" ? "active" : ""} aria-pressed={captureMode === "voice"} onClick={() => setCaptureMode((current) => current === "voice" ? null : "voice")}>
+              <Mic size={16} />
+              <span className="sr-only">Voice</span>
+            </button>
+            <button type="submit" className="meal-add-action" disabled={!mealName.trim() || !calories || !protein} aria-label="Add meal">
+              <Plus size={20} />
+            </button>
+          </div>
+        </form>
+      </section>
+    </div>
+  );
+}
+
+function MealView({ meals, onOpenLogger }: { meals: MealEntry[]; onOpenLogger: () => void }) {
+  const [range, setRange] = useState("today");
+  const dailyCalories = meals.reduce((total, meal) => total + meal.calories, 0);
+  const dailyProtein = meals.reduce((total, meal) => total + meal.protein, 0);
+  const dailyPercent = Math.min(100, Math.round((dailyCalories / 2500) * 100));
+  const nutrients = range === "today" ? [Math.min(100, Math.round((dailyProtein / 170) * 100)), 71, 63, 74, 68, 82] : [91, 78, 68, 81, 75, 88];
+  const nutrientLabels = ["Protein", "Carbs", "Fat", "Fibre", "Water", "Micros"];
 
   return (
     <section>
-      <div className="view-heading">
-        <span className="eyebrow">Consistency compounds</span>
-        <h1>Your progress.</h1>
-        <p>Training, activity, and energy in one honest view.</p>
+      <div className="view-heading meal-view-heading">
+        <h1>Nutrition.</h1>
+        <p>Daily nutrition and meals in one simple view.</p>
       </div>
-      <Tabs value={range} onValueChange={(value) => setRange(String(value ?? "week"))} className="mb-5">
-        <TabsList className="h-10 rounded-full bg-muted p-1">
-          <TabsTrigger value="today" className="rounded-full px-4 data-active:bg-foreground data-active:text-background">Today</TabsTrigger>
-          <TabsTrigger value="week" className="rounded-full px-4 data-active:bg-foreground data-active:text-background">This week</TabsTrigger>
+      <Tabs value={range} onValueChange={(value) => setRange(String(value ?? "week"))} className="plan-range-tabs">
+        <TabsList>
+          <TabsTrigger value="today">Today</TabsTrigger>
+          <TabsTrigger value="week">This week</TabsTrigger>
         </TabsList>
       </Tabs>
-      <div className="progress-hero">
+      <div className="nutrition-card meal-nutrition-card">
         <div>
-          <span>Weekly adherence</span>
-          <strong>{Math.min(100, 75 + workouts * 5)}%</strong>
-          <p>{workouts ? "Workout logged. Keep the streak moving." : "Three of four planned sessions complete."}</p>
+          <span>{range === "today" ? "Daily nutrition" : "Weekly nutrition"}</span>
+          <h2>{range === "today" ? dailyCalories.toLocaleString("en-US") : "14,580"} <small>/ {range === "today" ? "2,500" : "17,500"} kcal</small></h2>
+          <p>{range === "today" ? `Protein ${dailyProtein}g · ${meals.length} meals logged` : "Average 2,083 kcal · 144g protein / day"}</p>
         </div>
-        <div className="progress-ring"><b>{3 + workouts}<small>/ 4</small></b></div>
+        <div className="nutrition-ring">{range === "today" ? `${dailyPercent}%` : "83%"}</div>
       </div>
-      <div className="metric-grid">
-        <article><Flame /><span>Active calories</span><strong>{486 + calories}</strong><small>Today · kcal</small></article>
-        <article><Activity /><span>Daily movement</span><strong>7842</strong><small>Steps</small></article>
-        <article><TimerReset /><span>Training time</span><strong>{164 + workouts * 48}</strong><small>Minutes this week</small></article>
-        <article><Trophy /><span>Workouts</span><strong>{12 + workouts}</strong><small>This month</small></article>
-      </div>
-      <Card className="matrix-panel gap-3 rounded-[28px] py-4 ring-foreground/5">
-        <CardContent className="space-y-3">
-          <header><span>{range === "today" ? "Nutrient split" : "Training load"}</span><strong>{range === "today" ? "Fuel balance" : "Activity output"}</strong></header>
-          {range === "today" ? (
-            <DotMatrixChart fit="block" rows={12} values={nutrients} ticks={["Protein", "Carbs", "Fibre", "Micros", "Water", "Other"]} />
-          ) : (
-            <>
-              <DotMatrixChart values={activitySeries} ticks={ticks} />
-              <DateStrip days={29} />
-            </>
-          )}
+      <Card className="matrix-panel meal-balance-card gap-0 rounded-[28px] py-0 ring-foreground/5">
+        <CardContent>
+          <header className="meal-balance-header">
+            <span>Nutrient targets</span>
+            <div><strong>{range === "today" ? "Today’s balance" : "Weekly average"}</strong><small>% of daily target</small></div>
+          </header>
+          <DotMatrixChart fit="block" rows={10} values={nutrients} maxValue={100} ticks={nutrientLabels} tickValues={nutrients.map((value) => `${value}%`)} />
         </CardContent>
       </Card>
-      <SectionTitle kicker="Fuel" title="Meal log" />
+      <header className="meal-log-heading">
+        <div><h2>Meal log</h2><p>{range === "today" ? "Meals logged today" : "Your recent meals"}</p></div>
+        <button className="meal-log-trigger" onClick={onOpenLogger} aria-label="Log meal"><Plus size={27} /></button>
+      </header>
       <div className="meal-list">
-        {meals.map((meal) => (
-          <article className="meal-card" key={meal.type}>
+        {meals.map((meal) => {
+          const MealIcon = mealIcons[meal.type];
+          return <article className="meal-card" key={meal.id}>
             <header>
-              <span><meal.icon size={16} /> {meal.type}</span>
+              <span><MealIcon size={16} /> {meal.type}</span>
               <time>{meal.time}</time>
             </header>
             <strong>{meal.title}</strong>
-            <p>{meal.meta}</p>
-          </article>
-        ))}
-      </div>
-      <div className="nutrition-card">
-        <div>
-          <span>Daily nutrition</span>
-          <h2>2,140 <small>/ 2,500 kcal</small></h2>
-          <p>Protein 148g · Carbs 212g · Fat 68g</p>
-        </div>
-        <div className="nutrition-ring">86%</div>
+            <p>{meal.calories} kcal · {meal.protein}g protein</p>
+          </article>;
+        })}
       </div>
     </section>
   );
@@ -634,14 +782,9 @@ function ProfileView({ profile, savedCount, onRestart }: { profile: OnboardingPr
 
 function ExerciseDetail({ exercise, saved, onSave, onClose, onComplete }: { exercise: ExerciseGuide; saved: boolean; onSave: () => void; onClose: () => void; onComplete: () => void }) {
   useEffect(() => {
-    const previousOverflow = document.body.style.overflow;
     const closeOnEscape = (event: KeyboardEvent) => { if (event.key === "Escape") onClose(); };
-    document.body.style.overflow = "hidden";
     window.addEventListener("keydown", closeOnEscape);
-    return () => {
-      document.body.style.overflow = previousOverflow;
-      window.removeEventListener("keydown", closeOnEscape);
-    };
+    return () => window.removeEventListener("keydown", closeOnEscape);
   }, [onClose]);
 
   return (
@@ -714,17 +857,55 @@ export default function FlexFormDashboard() {
   const [builderMode, setBuilderMode] = useState(false);
   const [selected, setSelected] = useState<ExerciseGuide | null>(null);
   const [activeWorkout, setActiveWorkout] = useState<RoutineDay | null>(null);
+  const [mealLoggerOpen, setMealLoggerOpen] = useState(false);
+  const [meals, setMeals] = useState<MealEntry[]>(initialMeals);
   const [toast, setToast] = useState("");
   const [calories, setCalories] = useState(0);
   const [workouts, setWorkouts] = useState(0);
 
   const notify = (message: string) => { setToast(message); window.setTimeout(() => setToast(""), 2600); };
-  const overlayOpen = Boolean(selected || activeWorkout);
+  const overlayOpen = Boolean(selected || activeWorkout || mealLoggerOpen);
   useEffect(() => {
     if (!overlayOpen) return;
-    const previous = document.body.style.overflow;
-    document.body.style.overflow = "hidden";
-    return () => { document.body.style.overflow = previous; };
+    const body = document.body;
+    const root = document.documentElement;
+    const scrollTop = window.scrollY;
+    const previous = {
+      overflow: body.style.overflow,
+      overscrollBehavior: body.style.overscrollBehavior,
+      position: body.style.position,
+      top: body.style.top,
+      left: body.style.left,
+      right: body.style.right,
+      width: body.style.width,
+      paddingRight: body.style.paddingRight,
+    };
+    const scrollbarWidth = window.innerWidth - root.clientWidth;
+
+    body.style.overflow = "hidden";
+    body.style.overscrollBehavior = "none";
+    body.style.position = "fixed";
+    body.style.top = `-${scrollTop}px`;
+    body.style.left = "0";
+    body.style.right = "0";
+    body.style.width = "100%";
+    if (scrollbarWidth > 0) body.style.paddingRight = `${scrollbarWidth}px`;
+
+    return () => {
+      body.style.overflow = previous.overflow;
+      body.style.overscrollBehavior = previous.overscrollBehavior;
+      body.style.position = previous.position;
+      body.style.top = previous.top;
+      body.style.left = previous.left;
+      body.style.right = previous.right;
+      body.style.width = previous.width;
+      body.style.paddingRight = previous.paddingRight;
+
+      const previousScrollBehavior = root.style.scrollBehavior;
+      root.style.scrollBehavior = "auto";
+      window.scrollTo(0, scrollTop);
+      root.style.scrollBehavior = previousScrollBehavior;
+    };
   }, [overlayOpen]);
   const toggleSaved = (id: string) => setSaved((items) => { const next = items.includes(id) ? items.filter((item) => item !== id) : [...items, id]; void syncFavoriteExercise(id, next.includes(id)).catch(() => undefined); return next; });
   const navigate = (next: View) => { setView(next); window.scrollTo({ top: 0, behavior: "smooth" }); };
@@ -733,7 +914,7 @@ export default function FlexFormDashboard() {
     const nextRoutine = nextProfile.planMode === "generated" ? buildRoutine(nextProfile.goal, nextProfile.daysPerWeek, nextProfile.setup) : [];
     setRoutine(nextRoutine);
     setBuilderMode(nextProfile.planMode === "custom");
-    setView(nextProfile.planMode === "custom" ? "Library" : "Plan");
+    setView(nextProfile.planMode === "custom" ? "Library" : "Workout");
     setStage("app");
     void saveOnboarding(nextProfile).catch(() => undefined);
     if (nextRoutine.length) void saveRoutine(nextRoutine, "generated").catch(() => undefined);
@@ -741,12 +922,21 @@ export default function FlexFormDashboard() {
   const saveCustomRoutine = () => {
     const selectedExercises = customSelection.map((id) => exercises.find((exercise) => exercise.id === id)).filter((item): item is ExerciseGuide => Boolean(item));
     const next = [{ id: "custom-1", name: "Custom full body", exercises: selectedExercises }];
-    setRoutine(next); setBuilderMode(false); navigate("Plan"); notify("Custom routine saved.");
+    setRoutine(next); setBuilderMode(false); navigate("Workout"); notify("Custom routine saved.");
     void saveRoutine(next, "custom").catch(() => undefined);
   };
+  const addMeal = (meal: MealDraft) => {
+    setMeals((items) => [...items, { ...meal, id: `meal-${Date.now()}` }]);
+    notify(`${meal.type} added to your meal log.`);
+  };
+  const closeMealLogger = useCallback(() => setMealLoggerOpen(false), []);
 
   if (stage === "auth") return <AuthScreen onReady={(name) => { setDisplayName(name); setStage("onboarding"); }} />;
   if (stage === "onboarding") return <Onboarding displayName={displayName} onComplete={finishOnboarding} />;
 
-  return <div className="app-shell"><header className={`app-header ${view === "Plan" ? "plan-app-header" : ""}`}>{view === "Plan" ? <div className="app-section-name"><Dumbbell size={25} /><strong>Workouts</strong></div> : <Brand />}<div><ThemeControls compact />{view === "Plan" && <button className="header-notification" aria-label="Notifications"><Bell size={18} /><i /></button>}<span>{profile.goal}</span><button onClick={() => navigate("Profile")}>{profile.displayName.slice(0, 2).toUpperCase()}</button></div></header><main className={`app-content ${view === "Plan" ? "plan-content" : ""}`}>{view === "Home" && <HomeView name={profile.displayName} routine={routine} saved={saved} onOpen={setSelected} onSave={toggleSaved} onNavigate={navigate} onStart={setActiveWorkout} />}{view === "Plan" && <PlanView routine={routine} onOpen={setSelected} onStart={setActiveWorkout} onCustomize={() => { setBuilderMode(true); setCustomSelection(routine.flatMap((day) => day.exercises.map((exercise) => exercise.id))); navigate("Library"); }} />}{view === "Library" && <LibraryView saved={saved} builderMode={builderMode} customSelection={customSelection} onOpen={setSelected} onSave={toggleSaved} onToggleSelection={(id) => setCustomSelection((items) => items.includes(id) ? items.filter((item) => item !== id) : [...items, id])} onSaveRoutine={saveCustomRoutine} />}{view === "Progress" && <ProgressView calories={calories} workouts={workouts} />}{view === "Profile" && <ProfileView profile={profile} savedCount={saved.length} onRestart={() => { void signOut(); setStage("auth"); }} />}</main><nav className="floating-nav">{navItems.map(({ label, icon: Icon }) => <button key={label} className={view === label ? "active" : ""} onClick={() => navigate(label)}><Icon size={19} /><span>{label}</span></button>)}</nav>{selected && <ExerciseDetail exercise={selected} saved={saved.includes(selected.id)} onSave={() => toggleSaved(selected.id)} onClose={() => setSelected(null)} onComplete={() => { void saveGuideCompletion(selected.id).catch(() => undefined); setSelected(null); notify("Guide complete. Clean reps win."); }} />}{activeWorkout && <WorkoutSession day={activeWorkout} onClose={() => setActiveWorkout(null)} onFinish={(completed, burned) => { void saveWorkoutSummary(activeWorkout.id, activeWorkout.name, completed, burned).catch(() => undefined); setCalories((value) => value + burned); setWorkouts((value) => value + 1); setActiveWorkout(null); notify(`${completed.length} exercises logged · ${burned} kcal estimated`); }} />}{toast && <div className="toast"><Check size={15} />{toast}</div>}</div>;
+  const workoutArea = view === "Workout";
+  const sectionHeader = view === "Workout" ? { icon: Dumbbell, label: "Workout" } : view === "Meal" ? { icon: Apple, label: "Meal" } : null;
+  const SectionIcon = sectionHeader?.icon;
+
+  return <div className="app-shell"><header className={`app-header ${workoutArea ? "plan-app-header" : ""}`}>{sectionHeader && SectionIcon ? <div className="app-section-name"><SectionIcon size={25} /><strong>{sectionHeader.label}</strong></div> : <Brand />}<div><ThemeControls compact />{view === "Workout" && <button className="header-notification" aria-label="Notifications"><Bell size={18} /><i /></button>}<span>{profile.goal}</span><button onClick={() => navigate("Profile")}>{profile.displayName.slice(0, 2).toUpperCase()}</button></div></header><main className={`app-content ${workoutArea ? "plan-content" : ""}`}>{view === "Home" && <HomeView name={profile.displayName} routine={routine} saved={saved} onOpen={setSelected} onSave={toggleSaved} onNavigate={navigate} onStart={setActiveWorkout} />}{view === "Workout" && <WorkoutView routine={routine} calories={calories} workouts={workouts} onOpen={setSelected} onStart={setActiveWorkout} onCustomize={() => { setBuilderMode(true); setCustomSelection(routine.flatMap((day) => day.exercises.map((exercise) => exercise.id))); navigate("Library"); }} />}{view === "Library" && <LibraryView saved={saved} builderMode={builderMode} customSelection={customSelection} onOpen={setSelected} onSave={toggleSaved} onToggleSelection={(id) => setCustomSelection((items) => items.includes(id) ? items.filter((item) => item !== id) : [...items, id])} onSaveRoutine={saveCustomRoutine} />}{view === "Meal" && <MealView meals={meals} onOpenLogger={() => setMealLoggerOpen(true)} />}{view === "Profile" && <ProfileView profile={profile} savedCount={saved.length} onRestart={() => { void signOut(); setStage("auth"); }} />}</main><nav className="floating-nav">{navItems.map(({ label, icon: Icon }) => <button key={label} className={view === label || (view === "Library" && label === "Workout") ? "active" : ""} onClick={() => navigate(label)}><Icon size={19} /><span>{label}</span></button>)}</nav>{selected && <ExerciseDetail exercise={selected} saved={saved.includes(selected.id)} onSave={() => toggleSaved(selected.id)} onClose={() => setSelected(null)} onComplete={() => { void saveGuideCompletion(selected.id).catch(() => undefined); setSelected(null); notify("Guide complete. Clean reps win."); }} />}{activeWorkout && <WorkoutSession day={activeWorkout} onClose={() => setActiveWorkout(null)} onFinish={(completed, burned) => { void saveWorkoutSummary(activeWorkout.id, activeWorkout.name, completed, burned).catch(() => undefined); setCalories((value) => value + burned); setWorkouts((value) => value + 1); setActiveWorkout(null); notify(`${completed.length} exercises logged · ${burned} kcal estimated`); }} />}{mealLoggerOpen && <MealLoggerDrawer onClose={closeMealLogger} onAdd={addMeal} />}{toast && <div className="toast"><Check size={15} />{toast}</div>}</div>;
 }
