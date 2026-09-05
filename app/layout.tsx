@@ -7,7 +7,7 @@ const hanken = Hanken_Grotesk({ subsets: ["latin"], variable: "--font-hanken", d
 const doto = Doto({ subsets: ["latin"], variable: "--font-doto", display: "swap" });
 
 export const metadata: Metadata = {
-  title: "FlexForm — Train with intent",
+  title: "FXFORCE — Train with intent",
   description: "A premium fitness system for personalized routines, visual exercise guides, workout tracking, activity, and nutrition.",
 };
 

@@ -13,6 +13,8 @@ import {
   Coffee,
   Droplet,
   Dumbbell,
+  Eye,
+  EyeOff,
   Flame,
   Footprints,
   Home,
@@ -29,6 +31,7 @@ import {
   Sparkles,
   Target,
   TimerReset,
+  Trash2,
   Trophy,
   UserRound,
   Utensils,
@@ -50,7 +53,7 @@ import {
 } from "@/lib/exercises";
 import { signInWithEmail, signOut, signUpWithEmail } from "@/lib/supabase/auth";
 import { saveGuideCompletion, syncFavoriteExercise } from "@/lib/supabase/guides";
-import { saveOnboarding, saveRoutine, saveWorkoutSummary, type OnboardingProfile } from "@/lib/supabase/product";
+import { deleteRoutine, saveOnboarding, saveRoutine, saveWorkoutSummary, type OnboardingProfile } from "@/lib/supabase/product";
 import { DotMatrixChart, DotMeter, DotProgress } from "@/components/dot-matrix";
 import { DateStrip, buildDateTicks, formatLongDate } from "@/components/date-strip";
 import { AccentPicker, ThemeControls } from "@/components/theme-controls";
@@ -61,9 +64,74 @@ import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 type AppStage = "auth" | "onboarding" | "app";
 type View = "Home" | "Workout" | "Library" | "Meal" | "Profile";
 type RoutineDay = ReturnType<typeof buildRoutine>[number];
+type RoutineBuilderStep = "exercises" | "split" | "schedule";
+type RoutineSchedule = { startDate: string; weekdays: string[]; durationWeeks: number | null };
+type CustomRoutineDraft = { days: RoutineDay[]; schedule: RoutineSchedule };
+type RoutinePlan = { id: string; cloudId?: string; name: string; days: RoutineDay[]; schedule: RoutineSchedule | null };
 type MealKind = "Breakfast" | "Lunch" | "Dinner" | "Snack";
 type MealEntry = { id: string; type: MealKind; time: string; title: string; calories: number; protein: number };
 type MealDraft = Omit<MealEntry, "id">;
+type MeasurementSystem = "metric" | "imperial";
+
+const splitNameTemplates: Record<number, string[]> = {
+  1: ["Workout"],
+  2: ["Upper body", "Lower body"],
+  3: ["Push", "Pull", "Legs"],
+  4: ["Upper A", "Lower A", "Upper B", "Lower B"],
+  5: ["Push", "Pull", "Legs", "Upper", "Lower"],
+  6: ["Push A", "Pull A", "Legs A", "Push B", "Pull B", "Legs B"],
+};
+const splitNamesFor = (count: number) => splitNameTemplates[count] ?? Array.from({ length: count }, (_, index) => `Workout ${index + 1}`);
+
+const scheduleWeekdays = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
+const weekdayNumber: Record<string, number> = { Sun: 0, Mon: 1, Tue: 2, Wed: 3, Thu: 4, Fri: 5, Sat: 6 };
+
+function toDateInputValue(date: Date) {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+
+function buildScheduledDates(schedule: RoutineSchedule | null, count: number) {
+  if (!schedule?.startDate || !schedule.weekdays.length) return [];
+  const cursor = new Date(`${schedule.startDate}T12:00:00`);
+  const dates: Date[] = [];
+  for (let offset = 0; offset < 28 && dates.length < count; offset += 1) {
+    const candidate = new Date(cursor);
+    candidate.setDate(cursor.getDate() + offset);
+    if (schedule.weekdays.some((day) => weekdayNumber[day] === candidate.getDay())) dates.push(candidate);
+  }
+  return dates;
+}
+
+function bmiCategory(bmi: number) {
+  if (bmi < 18.5) return "Below healthy range";
+  if (bmi < 25) return "Healthy range";
+  if (bmi < 30) return "Above healthy range";
+  return "High range";
+}
+
+function calculateBodyMetrics(system: MeasurementSystem, values: { heightCm: string; weightKg: string; heightFeet: string; heightInches: string; weightLb: string }): OnboardingProfile["bodyMetrics"] | null {
+  let heightCm: number;
+  let weightKg: number;
+
+  if (system === "metric") {
+    if (!values.heightCm.trim() || !values.weightKg.trim()) return null;
+    heightCm = Number(values.heightCm);
+    weightKg = Number(values.weightKg);
+  } else {
+    if (!values.heightFeet.trim() || !values.weightLb.trim()) return null;
+    const totalInches = (Number(values.heightFeet) * 12) + (Number(values.heightInches) || 0);
+    heightCm = totalInches * 2.54;
+    weightKg = Number(values.weightLb) * 0.45359237;
+  }
+
+  if (!Number.isFinite(heightCm) || !Number.isFinite(weightKg) || heightCm < 100 || heightCm > 250 || weightKg < 30 || weightKg > 300) return null;
+  const bmi = weightKg / ((heightCm / 100) ** 2);
+  if (bmi < 10 || bmi > 80) return null;
+  return { heightCm: Math.round(heightCm * 10) / 10, weightKg: Math.round(weightKg * 10) / 10, bmi: Math.round(bmi * 10) / 10 };
+}
 
 const mealIcons = { Breakfast: Coffee, Lunch: Utensils, Dinner: Utensils, Snack: Apple };
 const initialMeals: MealEntry[] = [
@@ -181,7 +249,11 @@ const bodyRegionArtwork: Record<BodySide, Partial<Record<BodyRegionName, string>
 };
 
 function Brand({ inverse = false }: { inverse?: boolean }) {
-  return <div className={`brand ${inverse ? "inverse" : ""}`}><span>F</span><strong>FlexForm</strong></div>;
+  return (
+    <div className={`brand ${inverse ? "inverse" : ""}`} aria-label="FX FORCE">
+      <strong aria-hidden="true"><span>FX</span><small>FORCE</small></strong>
+    </div>
+  );
 }
 
 function AuthScreen({ onReady }: { onReady: (name: string) => void }) {
@@ -189,43 +261,63 @@ function AuthScreen({ onReady }: { onReady: (name: string) => void }) {
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
-  const [status, setStatus] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [status, setStatus] = useState<{ kind: "progress" | "success" | "error"; message: string } | null>(null);
+
+  const changeMode = (nextMode: "create" | "signin") => {
+    setMode(nextMode);
+    setStatus(null);
+    setShowPassword(false);
+  };
 
   const submit = async (event: FormEvent) => {
     event.preventDefault();
-    setStatus("Working…");
+    if (isSubmitting) return;
+    setIsSubmitting(true);
+    setStatus({ kind: "progress", message: mode === "create" ? "Creating your account…" : "Signing you in…" });
     try {
-      if (mode === "create") await signUpWithEmail(name || "Athlete", email, password);
-      else await signInWithEmail(email, password);
-      onReady(name || email.split("@")[0] || "Athlete");
+      const cleanName = name.trim() || "Athlete";
+      const cleanEmail = email.trim().toLowerCase();
+      if (mode === "create") {
+        const result = await signUpWithEmail(cleanName, cleanEmail, password);
+        if (result.mode === "supabase" && result.requiresEmailConfirmation) {
+          setStatus({ kind: "success", message: "Check your email to confirm your account, then sign in." });
+          return;
+        }
+      } else await signInWithEmail(cleanEmail, password);
+      onReady(mode === "create" ? cleanName : cleanEmail.split("@")[0] || "Athlete");
     } catch (error) {
-      setStatus(error instanceof Error ? error.message : "Could not continue. Try again.");
+      setStatus({ kind: "error", message: error instanceof Error ? error.message : "Could not continue. Try again." });
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
   return (
     <main className="auth-screen">
-      <section className="auth-visual">
-        <Brand inverse />
-        <div className="auth-art"><Image src="/exercises/generated/bench-press-anatomical.png" alt="Anatomical barbell bench press visual guide" fill priority sizes="(max-width: 760px) 100vw, 54vw" /></div>
-        <div className="auth-statement"><span><Sparkles size={14} /> Your training system</span><h1>Build a body<br />that performs.</h1><p>35 visual exercise guides. A routine shaped around you. Every session recorded.</p></div>
-        <div className="auth-proof"><strong>35</strong><span>original movement guides</span><strong>1</strong><span>plan built for you</span></div>
-      </section>
       <section className="auth-panel">
         <div className="auth-panel-inner">
-          <span className="eyebrow">Welcome to FlexForm</span>
-          <h2>{mode === "create" ? "Create your account." : "Welcome back."}</h2>
-          <p>{mode === "create" ? "Tell us where you’re going. We’ll build the path." : "Your plan and training history are waiting."}</p>
-          <div className="auth-tabs"><button className={mode === "create" ? "active" : ""} onClick={() => setMode("create")}>Create account</button><button className={mode === "signin" ? "active" : ""} onClick={() => setMode("signin")}>Sign in</button></div>
-          <form onSubmit={submit}>
-            {mode === "create" && <label><span>Name</span><div><UserRound size={17} /><input value={name} onChange={(event) => setName(event.target.value)} placeholder="Your name" required /></div></label>}
-            <label><span>Email</span><div><Mail size={17} /><input type="email" value={email} onChange={(event) => setEmail(event.target.value)} placeholder="you@example.com" required /></div></label>
-            <label><span>Password</span><div><LockKeyhole size={17} /><input type="password" value={password} onChange={(event) => setPassword(event.target.value)} placeholder="8 characters or more" minLength={8} required /></div></label>
-            {status && <small className="form-status">{status}</small>}
-            <button className="primary-button" type="submit">{mode === "create" ? "Create my profile" : "Open my plan"}<ArrowRight size={18} /></button>
+          <header className="auth-brand"><Brand /></header>
+          <div className="auth-intro">
+            <span className="eyebrow">Train with intent</span>
+            <h1 id="auth-title">{mode === "create" ? "Start your training." : "Welcome back."}</h1>
+            <p>{mode === "create" ? "A focused plan, built around you." : "Your plan is ready when you are."}</p>
+          </div>
+          <div className="auth-tabs" role="tablist" aria-label="Account access">
+            <button type="button" role="tab" aria-selected={mode === "create"} className={mode === "create" ? "active" : ""} onClick={() => changeMode("create")}>Create account</button>
+            <button type="button" role="tab" aria-selected={mode === "signin"} className={mode === "signin" ? "active" : ""} onClick={() => changeMode("signin")}>Sign in</button>
+          </div>
+          <form onSubmit={submit} aria-labelledby="auth-title">
+            {mode === "create" && <div className="auth-field"><label htmlFor="auth-name">Name</label><div className="auth-control"><UserRound size={17} /><input id="auth-name" autoComplete="name" value={name} onChange={(event) => setName(event.target.value)} placeholder="Your name" required /></div></div>}
+            <div className="auth-field"><label htmlFor="auth-email">Email</label><div className="auth-control"><Mail size={17} /><input id="auth-email" autoComplete="email" autoCapitalize="none" spellCheck={false} type="email" value={email} onChange={(event) => setEmail(event.target.value)} placeholder="you@example.com" required /></div></div>
+            <div className="auth-field"><label htmlFor="auth-password">Password</label><div className="auth-control"><LockKeyhole size={17} /><input id="auth-password" autoComplete={mode === "create" ? "new-password" : "current-password"} type={showPassword ? "text" : "password"} value={password} onChange={(event) => setPassword(event.target.value)} placeholder="8 characters minimum" minLength={8} required /><button className="password-toggle" type="button" onClick={() => setShowPassword((visible) => !visible)} aria-label={showPassword ? "Hide password" : "Show password"}>{showPassword ? <EyeOff size={17} /> : <Eye size={17} />}</button></div></div>
+            <div className={`form-status ${status?.kind ?? ""}`} aria-live="polite" aria-atomic="true">{status?.message ?? ""}</div>
+            <button className="primary-button" type="submit" disabled={isSubmitting}>{isSubmitting ? "Please wait" : mode === "create" ? "Get started" : "Continue"}{!isSubmitting && <ArrowRight size={18} />}</button>
           </form>
-          <button className="demo-button" onClick={() => onReady("Alex")}>Explore the interactive demo</button>
-          <small className="auth-note">Supabase authentication activates when environment keys are connected.</small>
+          <div className="auth-divider"><span>or</span></div>
+          <button className="demo-button" type="button" onClick={() => onReady("Alex")}>Continue without an account</button>
+          <small className="auth-note">Your training plan. Nothing extra.</small>
         </div>
       </section>
     </main>
@@ -236,30 +328,73 @@ function Onboarding({ displayName, onComplete }: { displayName: string; onComple
   const [step, setStep] = useState(0);
   const [goal, setGoal] = useState<Goal>("Build muscle");
   const [experience, setExperience] = useState("Returning");
+  const [measurementSystem, setMeasurementSystem] = useState<MeasurementSystem>("metric");
+  const [heightCm, setHeightCm] = useState("");
+  const [weightKg, setWeightKg] = useState("");
+  const [heightFeet, setHeightFeet] = useState("");
+  const [heightInches, setHeightInches] = useState("");
+  const [weightLb, setWeightLb] = useState("");
   const [days, setDays] = useState(4);
   const [setup, setSetup] = useState<TrainingSetup>("Full gym");
   const [planMode, setPlanMode] = useState<"generated" | "custom">("generated");
+  const metricValues = { heightCm, weightKg, heightFeet, heightInches, weightLb };
+  const bodyMetrics = calculateBodyMetrics(measurementSystem, metricValues);
+  const hasStartedMetrics = measurementSystem === "metric" ? Boolean(heightCm || weightKg) : Boolean(heightFeet || heightInches || weightLb);
+
+  const changeMeasurementSystem = (nextSystem: MeasurementSystem) => {
+    if (nextSystem === measurementSystem) return;
+    if (nextSystem === "imperial" && Number(heightCm) > 0) {
+      const totalInches = Number(heightCm) / 2.54;
+      const feet = Math.floor(totalInches / 12);
+      setHeightFeet(String(feet));
+      setHeightInches(String(Math.round((totalInches - feet * 12) * 10) / 10));
+      if (Number(weightKg) > 0) setWeightLb(String(Math.round(Number(weightKg) * 2.20462262 * 10) / 10));
+    }
+    if (nextSystem === "metric" && Number(heightFeet) > 0) {
+      setHeightCm(String(Math.round(((Number(heightFeet) * 12) + (Number(heightInches) || 0)) * 2.54 * 10) / 10));
+      if (Number(weightLb) > 0) setWeightKg(String(Math.round(Number(weightLb) * 0.45359237 * 10) / 10));
+    }
+    setMeasurementSystem(nextSystem);
+  };
 
   const screens = [
     { kicker: "Your outcome", title: "What are we training for?", copy: "Your goal changes exercise priority, weekly volume, and session structure.", body: <div className="choice-grid">{goals.map((item) => <button key={item.value} className={goal === item.value ? "selected" : ""} onClick={() => setGoal(item.value)}><Target size={20} /><strong>{item.value}</strong><small>{item.copy}</small><i>{goal === item.value && <Check size={13} />}</i></button>)}</div> },
     { kicker: "Training history", title: "Where are you starting?", copy: "This keeps the routine challenging without making it reckless.", body: <div className="stacked-choices">{[["New", "I’m learning gym movements"], ["Returning", "I’ve trained before and I’m rebuilding"], ["Experienced", "I train consistently with solid technique"]].map(([value, label]) => <button key={value} className={experience === value ? "selected" : ""} onClick={() => setExperience(value)}><span>{value}</span><small>{label}</small><i>{experience === value && <Check size={14} />}</i></button>)}</div> },
+    { kicker: "Body metrics", title: "Find your baseline.", copy: "Add your height and weight for a quick BMI estimate.", body: <div className="bmi-calculator">
+      <div className="bmi-units" role="group" aria-label="Measurement system"><button type="button" className={measurementSystem === "metric" ? "active" : ""} onClick={() => changeMeasurementSystem("metric")}>Metric</button><button type="button" className={measurementSystem === "imperial" ? "active" : ""} onClick={() => changeMeasurementSystem("imperial")}>Imperial</button></div>
+      {measurementSystem === "metric" ? <div className="bmi-fields"><label><span>Height</span><div><input type="number" inputMode="decimal" min="100" max="250" step="0.1" value={heightCm} onChange={(event) => setHeightCm(event.target.value)} placeholder="175" aria-label="Height in centimetres" /><small>cm</small></div></label><label><span>Weight</span><div><input type="number" inputMode="decimal" min="30" max="300" step="0.1" value={weightKg} onChange={(event) => setWeightKg(event.target.value)} placeholder="75" aria-label="Weight in kilograms" /><small>kg</small></div></label></div> : <div className="bmi-fields imperial"><label><span>Height</span><div><input type="number" inputMode="numeric" min="3" max="8" step="1" value={heightFeet} onChange={(event) => setHeightFeet(event.target.value)} placeholder="5" aria-label="Height in feet" /><small>ft</small></div></label><label><span>Height</span><div><input type="number" inputMode="decimal" min="0" max="11.9" step="0.1" value={heightInches} onChange={(event) => setHeightInches(event.target.value)} placeholder="9" aria-label="Additional height in inches" /><small>in</small></div></label><label><span>Weight</span><div><input type="number" inputMode="decimal" min="66" max="660" step="0.1" value={weightLb} onChange={(event) => setWeightLb(event.target.value)} placeholder="165" aria-label="Weight in pounds" /><small>lb</small></div></label></div>}
+      <div className={`bmi-result ${bodyMetrics ? "ready" : ""}`} aria-live="polite">{bodyMetrics ? <><div><span>Your BMI</span><strong className="dot-num">{bodyMetrics.bmi.toFixed(1)}</strong><small>{bmiCategory(bodyMetrics.bmi)}</small></div><div className="bmi-axis" aria-hidden="true"><div className="bmi-scale"><i style={{ left: `${Math.min(100, Math.max(0, ((bodyMetrics.bmi - 18.5) / 11.5) * 100))}%` }} /><span /><span /><span /><span /></div></div><div className="bmi-legend" aria-label="BMI scale legend"><span><b>Under</b><small>&lt;18.5</small></span><span><b>Healthy</b><small>18.5–24.9</small></span><span><b>Above</b><small>25–29.9</small></span><span><b>High</b><small>30+</small></span></div></> : <div className="bmi-placeholder"><Activity size={21} /><span>{hasStartedMetrics ? "Check that your measurements are within the supported range." : "Enter your measurements to see your result."}</span></div>}</div>
+      <p className="bmi-note">BMI is a general screening estimate, not a medical diagnosis.</p>
+    </div> },
     { kicker: "Weekly rhythm", title: "How many days can you own?", copy: "Choose the schedule you can repeat even during a busy week.", body: <div className="day-picker"><button onClick={() => setDays(Math.max(2, days - 1))}><Minus /></button><strong>{days}<span>days / week</span></strong><button onClick={() => setDays(Math.min(6, days + 1))}><Plus /></button></div> },
     { kicker: "Your setup", title: "What can you train with?", copy: "Every generated exercise will fit the equipment you actually have.", body: <div className="stacked-choices">{[["Full gym", "Barbells, cables, machines, dumbbells"], ["Dumbbells", "Dumbbells, bench, and bodyweight"], ["Bodyweight", "No equipment required"]].map(([value, label]) => <button key={value} className={setup === value ? "selected" : ""} onClick={() => setSetup(value as TrainingSetup)}><span>{value}</span><small>{label}</small><i>{setup === value && <Check size={14} />}</i></button>)}</div> },
-    { kicker: "Make it yours", title: "How should we build your routine?", copy: "Start with a smart recommendation or choose every movement yourself.", body: <div className="plan-mode-grid"><button className={planMode === "generated" ? "selected" : ""} onClick={() => setPlanMode("generated")}><Sparkles /><strong>Build it for me</strong><small>FlexForm selects a balanced routine from your answers.</small></button><button className={planMode === "custom" ? "selected" : ""} onClick={() => setPlanMode("custom")}><Dumbbell /><strong>I’ll build my own</strong><small>Open the full library and handpick your exercises.</small></button></div> },
+    { kicker: "Make it yours", title: "How should we build your routine?", copy: "Start with a smart recommendation or choose every movement yourself.", body: <div className="plan-mode-grid"><button className={planMode === "generated" ? "selected" : ""} onClick={() => setPlanMode("generated")}><Sparkles /><strong>Build it for me</strong><small>FXFORCE selects a balanced routine from your answers.</small></button><button className={planMode === "custom" ? "selected" : ""} onClick={() => setPlanMode("custom")}><Dumbbell /><strong>I’ll build my own</strong><small>Open the full library and handpick your exercises.</small></button></div> },
   ];
   const current = screens[step];
+  const finalStep = screens.length - 1;
+  const metricsStep = 2;
+  const continueDisabled = step === metricsStep && !bodyMetrics;
+
+  const continueOnboarding = () => {
+    if (continueDisabled) return;
+    if (step < finalStep) {
+      setStep((value) => value + 1);
+      return;
+    }
+    onComplete({ displayName, goal, experience, bodyMetrics, daysPerWeek: days, setup, planMode });
+  };
 
   return (
     <main className="onboarding-shell">
-      <header><Brand /><span>{String(step + 1).padStart(2, "0")} / 05</span></header>
-      <div className="step-track"><i style={{ width: `${((step + 1) / 5) * 100}%` }} /></div>
+      <header><Brand /><span>{String(step + 1).padStart(2, "0")} / {String(screens.length).padStart(2, "0")}</span></header>
+      <div className="step-track"><i style={{ width: `${((step + 1) / screens.length) * 100}%` }} /></div>
       <section className="onboarding-card">
         <div className="onboarding-copy"><span className="eyebrow">{current.kicker}</span><h1>{current.title}</h1><p>{current.copy}</p></div>
         {current.body}
       </section>
       <footer>
         <button className="back-button" disabled={step === 0} onClick={() => setStep((value) => value - 1)}><ArrowLeft size={18} /> Back</button>
-        <button className="primary-button" onClick={() => step < 4 ? setStep((value) => value + 1) : onComplete({ displayName, goal, experience, daysPerWeek: days, setup, planMode })}>{step === 4 ? planMode === "generated" ? "Build my routine" : "Open exercise library" : "Continue"}<ArrowRight size={18} /></button>
+        <div className="onboarding-actions">{step === metricsStep && !bodyMetrics && <button className="skip-button" onClick={() => setStep((value) => value + 1)}>Skip</button>}<button className="primary-button" disabled={continueDisabled} onClick={continueOnboarding}>{step === finalStep ? planMode === "generated" ? "Build my routine" : "Open exercise library" : "Continue"}<ArrowRight size={18} /></button></div>
       </footer>
     </main>
   );
@@ -378,10 +513,12 @@ function HomeView({ routine, saved, onOpen, onSave, onNavigate, onStart }: { rou
   </>;
 }
 
-function WorkoutView({ routine, calories, workouts, onOpen, onStart, onCustomize }: { routine: RoutineDay[]; calories: number; workouts: number; onOpen: (exercise: ExerciseGuide) => void; onStart: (day: RoutineDay) => void; onCustomize: () => void }) {
+function WorkoutView({ plans, calories, workouts, onOpen, onStart, onCustomize, onDelete }: { plans: RoutinePlan[]; calories: number; workouts: number; onOpen: (exercise: ExerciseGuide) => void; onStart: (day: RoutineDay) => void; onCustomize: () => void; onDelete: (routineId: string) => void }) {
   const [range, setRange] = useState("week");
   const [expandedDay, setExpandedDay] = useState<string | null>(null);
   const [selectedActivityDate, setSelectedActivityDate] = useState("");
+  const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
+  const routine = plans.flatMap((plan) => plan.days);
   const activityDays = range === "today" ? 7 : ACTIVITY_DAYS;
   const displayedActivity = useMemo(() => selectedActivityDate ? buildMockActivitySeries(selectedActivityDate, activityDays) : activitySeries.slice(-activityDays), [activityDays, selectedActivityDate]);
   const activityTicks = useMemo(() => buildDateTicks(activityDays, 6, selectedActivityDate || undefined), [activityDays, selectedActivityDate]);
@@ -389,8 +526,9 @@ function WorkoutView({ routine, calories, workouts, onOpen, onStart, onCustomize
   const completedWorkouts = Math.max(0, routine.length - 1);
   const scheduleOrder = [1, 3, 4, 6, 2, 5, 0];
   const completedDays = new Set(scheduleOrder.slice(0, completedWorkouts));
-  const plannedDays = new Set(scheduleOrder.slice(0, routine.length));
   const weekDays = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+  const plannedDays = new Set(plans.flatMap((plan) => plan.schedule ? plan.schedule.weekdays.map((day) => weekDays.indexOf(day)).filter((index) => index >= 0) : scheduleOrder.slice(0, plan.days.length)));
+  const deleteTarget = plans.find((plan) => plan.id === deleteConfirmId);
   const selectActivityDate = (nextDate: string) => {
     if (nextDate === selectedActivityDate) return;
     setSelectedActivityDate(nextDate);
@@ -460,60 +598,39 @@ function WorkoutView({ routine, calories, workouts, onOpen, onStart, onCustomize
         <header>
           <div>
             <h2 id="workouts-title">Workouts</h2>
-            <p>Weekly workouts as planned</p>
+            <p>{plans.length ? `${plans.length} active routine${plans.length === 1 ? "" : "s"}` : "Build your first routine"}</p>
           </div>
           <button onClick={onCustomize} aria-label="Customize workout plan"><Plus size={27} /></button>
         </header>
 
-        {routine.length ? (
-          <div className="plan-workout-list">
-            {routine.map((day, dayIndex) => {
-              const expanded = expandedDay === day.id;
-              const calories = day.exercises.reduce((total, exercise) => total + Math.round((exercise.caloriesPerMinute[0] + exercise.caloriesPerMinute[1]) * 3), 0);
-              return (
-                <article className={expanded ? "expanded" : ""} key={day.id}>
-                  <button className="plan-workout-summary" onClick={() => setExpandedDay(expanded ? null : day.id)} aria-expanded={expanded}>
-                    <div>
-                      <span className="workout-timing">
-                        {dayIndex === 0 ? "Today" : dayIndex === 1 ? "Tomorrow" : "Later this week"}
-                        {dayIndex === 1 && <b>Upcoming</b>}
-                      </span>
-                      <strong>{day.name}</strong>
-                      <span className="workout-meta">
-                        <small><Clock3 size={13} /> {42 + dayIndex * 3} mins</small>
-                        <small><Footprints size={13} /> {day.exercises.length} exercises</small>
-                        <small><Flame size={13} /> {calories} kcal</small>
-                      </span>
-                    </div>
-                    <i><ChevronRight size={18} /></i>
+        {plans.length ? (
+          <div className="routine-plan-list">{plans.map((plan, planIndex) => {
+            const scheduledDates = buildScheduledDates(plan.schedule, plan.days.length);
+            return <section className="routine-plan-group" key={plan.id}>
+              <header><div><strong>{plan.name}</strong><span>{plan.schedule ? `${plan.schedule.weekdays.join(" · ")} · ${plan.schedule.durationWeeks ? `${plan.schedule.durationWeeks} weeks` : "ongoing"}` : `${plan.days.length} workout${plan.days.length === 1 ? "" : "s"}`}</span></div><button type="button" onClick={() => setDeleteConfirmId(plan.id)} aria-label={`Delete ${plan.name}`}><Trash2 size={15} /></button></header>
+              <div className="plan-workout-list">{plan.days.map((day, dayIndex) => {
+                const expandedKey = `${plan.id}:${day.id}`;
+                const expanded = expandedDay === expandedKey;
+                const calories = day.exercises.reduce((total, exercise) => total + Math.round((exercise.caloriesPerMinute[0] + exercise.caloriesPerMinute[1]) * 3), 0);
+                return <article className={expanded ? "expanded" : ""} key={`${plan.id}-${day.id}`}>
+                  <button className="plan-workout-summary" onClick={() => setExpandedDay(expanded ? null : expandedKey)} aria-expanded={expanded}>
+                    <div><span className="workout-timing">{scheduledDates[dayIndex] ? scheduledDates[dayIndex].toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric" }) : planIndex === 0 && dayIndex === 0 ? "Today" : "Upcoming"}</span><strong>{day.name}</strong><span className="workout-meta"><small><Clock3 size={13} /> {42 + dayIndex * 3} mins</small><small><Footprints size={13} /> {day.exercises.length} exercises</small><small><Flame size={13} /> {calories} kcal</small></span></div><i><ChevronRight size={18} /></i>
                   </button>
-                  <div className="plan-workout-collapse" aria-hidden={!expanded} inert={!expanded}>
-                    <div>
-                      <div className="plan-workout-details">
-                        {day.exercises.map((exercise, index) => (
-                          <button key={`${day.id}-${exercise.id}`} onClick={() => onOpen(exercise)}>
-                            <span>{String(index + 1).padStart(2, "0")}</span>
-                            <div><strong>{exercise.name}</strong><small>{exercise.sets} sets · {exercise.reps} reps</small></div>
-                            <ChevronRight size={15} />
-                          </button>
-                        ))}
-                        <button className="start-plan-workout" onClick={() => onStart(day)}>Start workout <ArrowRight size={16} /></button>
-                      </div>
-                    </div>
-                  </div>
-                </article>
-              );
-            })}
-          </div>
+                  <div className="plan-workout-collapse" aria-hidden={!expanded} inert={!expanded}><div><div className="plan-workout-details">{day.exercises.map((exercise, index) => <button key={`${plan.id}-${day.id}-${exercise.id}`} onClick={() => onOpen(exercise)}><span>{String(index + 1).padStart(2, "0")}</span><div><strong>{exercise.name}</strong><small>{exercise.sets} sets · {exercise.reps} reps</small></div><ChevronRight size={15} /></button>)}<button className="start-plan-workout" onClick={() => onStart(day)}>Start workout <ArrowRight size={16} /></button></div></div></div>
+                </article>;
+              })}</div>
+            </section>;
+          })}</div>
         ) : (
           <div className="empty-state"><Dumbbell /><h2>Your routine is empty</h2><p>Choose exercises from the visual library, then save your first training day.</p><button className="primary-button" onClick={onCustomize}>Build my routine <ArrowRight size={17} /></button></div>
         )}
       </section>
+      {deleteTarget && <div className="modal-backdrop delete-routine-backdrop" role="presentation" onClick={() => setDeleteConfirmId(null)}><section className="delete-routine-dialog" role="alertdialog" aria-modal="true" aria-labelledby="delete-routine-title" aria-describedby="delete-routine-copy" onClick={(event) => event.stopPropagation()}><span><Trash2 size={20} /></span><h2 id="delete-routine-title">Delete {deleteTarget.name}?</h2><p id="delete-routine-copy">Only this routine and its schedule will be removed.</p><div><button type="button" onClick={() => setDeleteConfirmId(null)}>Keep routine</button><button type="button" onClick={() => { const id = deleteTarget.id; setDeleteConfirmId(null); onDelete(id); }}>Delete routine</button></div></section></div>}
     </section>
   );
 }
 
-function LibraryView({ saved, builderMode, customSelection, onOpen, onSave, onToggleSelection, onSaveRoutine }: { saved: string[]; builderMode: boolean; customSelection: string[]; onOpen: (exercise: ExerciseGuide) => void; onSave: (id: string) => void; onToggleSelection: (id: string) => void; onSaveRoutine: () => void }) {
+function LibraryView({ saved, onOpen, onSave }: { saved: string[]; onOpen: (exercise: ExerciseGuide) => void; onSave: (id: string) => void }) {
   const [query, setQuery] = useState("");
   const [bodySide, setBodySide] = useState<BodySide>("front");
   const [bodyPart, setBodyPart] = useState<BodyRegionName | null>(null);
@@ -541,7 +658,7 @@ function LibraryView({ saved, builderMode, customSelection, onOpen, onSave, onTo
     setBodyPart(null);
   };
 
-  return <section><div className="view-heading"><span className="eyebrow">35 anatomical movement guides</span><h1>{builderMode ? "Build your routine." : "Exercise library."}</h1><p>Tap a muscle on the body to instantly explore every related exercise, or use the detailed filters below.</p></div>{builderMode && <div className="builder-banner"><div><Sparkles /><span>Routine builder<strong>{customSelection.length} exercise{customSelection.length === 1 ? "" : "s"} selected</strong></span></div><button disabled={!customSelection.length} onClick={onSaveRoutine}>Save routine</button></div>}
+  return <section><div className="view-heading"><span className="eyebrow">35 anatomical movement guides</span><h1>Exercise library.</h1><p>Tap a muscle on the body to instantly explore every related exercise, or use the detailed filters below.</p></div>
     <section className="body-explorer" aria-labelledby="body-explorer-title">
       <header><div><span className="eyebrow">Interactive muscle map</span><h2 id="body-explorer-title">Where do you want to train?</h2></div><div className="body-side-toggle"><button className={bodySide === "front" ? "active" : ""} onClick={() => showBodySide("front")}>Front</button><button className={bodySide === "back" ? "active" : ""} onClick={() => showBodySide("back")}>Back</button></div></header>
       <div className="body-explorer-layout">
@@ -557,7 +674,159 @@ function LibraryView({ saved, builderMode, customSelection, onOpen, onSave, onTo
         <div className="body-selection-copy"><span>Selected area</span><h3>{bodyPart ?? "Tap a muscle"}</h3><p>{bodyPart ? `${filtered.length} related exercise${filtered.length === 1 ? "" : "s"} shown below.` : "Choose any highlighted region on the front or back of the body."}</p>{bodyPart && <button onClick={() => setBodyPart(null)}>Clear selection <X size={14} /></button>}</div>
       </div>
     </section>
-    <SearchField value={query} onChange={setQuery} /><div className="filter-panel"><div><span>Body area</span><div className="filter-pills">{bodyAreas.map((item) => <button className={area === item ? "active" : ""} key={item} onClick={() => { setArea(item); setBodyPart(null); }}>{item}</button>)}</div></div><div className="select-filters"><label><span>Muscle</span><select value={muscle} onChange={(event) => { setMuscle(event.target.value as typeof muscle); setBodyPart(null); }}>{muscleGroups.map((item) => <option key={item}>{item}</option>)}</select></label><label><span>Equipment</span><select value={equipment} onChange={(event) => setEquipment(event.target.value as typeof equipment)}>{equipmentOptions.map((item) => <option key={item}>{item}</option>)}</select></label><label><span>Difficulty</span><select value={difficulty} onChange={(event) => setDifficulty(event.target.value as typeof difficulty)}>{difficultyOptions.map((item) => <option key={item}>{item}</option>)}</select></label></div></div><SectionTitle kicker={bodyPart ? `${filtered.length} ${bodyPart.toLowerCase()} movement${filtered.length === 1 ? "" : "s"}` : `${filtered.length} movement${filtered.length === 1 ? "" : "s"}`} title={bodyPart ? `Train your ${bodyPart.toLowerCase()}` : "Explore the index"} action={<button className="text-button" onClick={clear}>Reset filters</button>} />{filtered.length ? <div className="exercise-grid">{filtered.map((exercise) => <ExerciseCard key={exercise.id} exercise={exercise} saved={saved.includes(exercise.id)} selected={customSelection.includes(exercise.id)} onOpen={() => onOpen(exercise)} onSave={() => onSave(exercise.id)} onAdd={builderMode ? () => onToggleSelection(exercise.id) : undefined} />)}</div> : <div className="empty-state"><Search /><h2>No exact match</h2><p>Reset the filters or broaden the body area.</p><button className="primary-button" onClick={clear}>Reset filters</button></div>}</section>;
+    <SearchField value={query} onChange={setQuery} /><div className="filter-panel"><div><span>Body area</span><div className="filter-pills">{bodyAreas.map((item) => <button className={area === item ? "active" : ""} key={item} onClick={() => { setArea(item); setBodyPart(null); }}>{item}</button>)}</div></div><div className="select-filters"><label><span>Muscle</span><select value={muscle} onChange={(event) => { setMuscle(event.target.value as typeof muscle); setBodyPart(null); }}>{muscleGroups.map((item) => <option key={item}>{item}</option>)}</select></label><label><span>Equipment</span><select value={equipment} onChange={(event) => setEquipment(event.target.value as typeof equipment)}>{equipmentOptions.map((item) => <option key={item}>{item}</option>)}</select></label><label><span>Difficulty</span><select value={difficulty} onChange={(event) => setDifficulty(event.target.value as typeof difficulty)}>{difficultyOptions.map((item) => <option key={item}>{item}</option>)}</select></label></div></div><SectionTitle kicker={bodyPart ? `${filtered.length} ${bodyPart.toLowerCase()} movement${filtered.length === 1 ? "" : "s"}` : `${filtered.length} movement${filtered.length === 1 ? "" : "s"}`} title={bodyPart ? `Train your ${bodyPart.toLowerCase()}` : "Explore the index"} action={<button className="text-button" onClick={clear}>Reset filters</button>} />{filtered.length ? <div className="exercise-grid">{filtered.map((exercise) => <ExerciseCard key={exercise.id} exercise={exercise} saved={saved.includes(exercise.id)} onOpen={() => onOpen(exercise)} onSave={() => onSave(exercise.id)} />)}</div> : <div className="empty-state"><Search /><h2>No exact match</h2><p>Reset the filters or broaden the body area.</p><button className="primary-button" onClick={clear}>Reset filters</button></div>}</section>;
+}
+
+function RoutineBuilderDrawer({ initialSelection, initialDayCount, saved, onClose, onSaveExercise, onSave }: { initialSelection: string[]; initialDayCount: number; saved: string[]; onClose: () => void; onSaveExercise: (id: string) => void; onSave: (draft: CustomRoutineDraft) => void }) {
+  const startingDayCount = Math.min(6, Math.max(1, initialDayCount || 3));
+  const [step, setStep] = useState<RoutineBuilderStep>("exercises");
+  const [query, setQuery] = useState("");
+  const [area, setArea] = useState<(typeof bodyAreas)[number]>("All");
+  const [bodySide, setBodySide] = useState<BodySide>("front");
+  const [bodyPart, setBodyPart] = useState<BodyRegionName | null>(null);
+  const [selection, setSelection] = useState(() => Array.from(new Set(initialSelection)));
+  const [dayCount, setDayCount] = useState(startingDayCount);
+  const [dayNames, setDayNames] = useState(() => splitNamesFor(startingDayCount));
+  const [assignments, setAssignments] = useState<Record<string, number>>(() => Object.fromEntries(Array.from(new Set(initialSelection)).map((id, index) => [id, index % startingDayCount])));
+  const [startDate, setStartDate] = useState(() => new Date().toISOString().slice(0, 10));
+  const [weekdays, setWeekdays] = useState(() => scheduleWeekdays.filter((_, index) => index % 2 === 0).slice(0, startingDayCount));
+  const [durationWeeks, setDurationWeeks] = useState<number | null>(8);
+  const [movementsOpen, setMovementsOpen] = useState(false);
+  const [preview, setPreview] = useState<ExerciseGuide | null>(null);
+  const datePickerDays = useMemo(() => {
+    const parsedDate = new Date(`${startDate}T12:00:00`);
+    const anchor = Number.isNaN(parsedDate.getTime()) ? new Date() : parsedDate;
+    const weekStart = new Date(anchor);
+    weekStart.setDate(anchor.getDate() - anchor.getDay());
+    return Array.from({ length: 7 }, (_, index) => {
+      const date = new Date(weekStart);
+      date.setDate(weekStart.getDate() + index);
+      return { iso: toDateInputValue(date), day: date.toLocaleDateString("en-US", { weekday: "short" }), date: date.getDate() };
+    });
+  }, [startDate]);
+  const filtered = useMemo(() => exercises.filter((exercise) => {
+    const haystack = `${exercise.name} ${exercise.primary} ${exercise.secondary.join(" ")} ${exercise.equipment}`.toLowerCase();
+    const bodyPartMatch = !bodyPart || bodyRegionTerms[bodyPart].some((term) => haystack.includes(term));
+    return bodyPartMatch && (!query || haystack.includes(query.trim().toLowerCase())) && (area === "All" || exercise.bodyArea === area);
+  }), [area, bodyPart, query]);
+  const selectedExercises = selection.map((id) => exercises.find((exercise) => exercise.id === id)).filter((exercise): exercise is ExerciseGuide => Boolean(exercise));
+  const splitReady = dayNames.every((_, dayIndex) => selectedExercises.some((exercise) => (assignments[exercise.id] ?? 0) === dayIndex));
+  useEffect(() => {
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key !== "Escape" || preview) return;
+      if (movementsOpen) setMovementsOpen(false);
+      else if (step !== "exercises") setStep(step === "schedule" ? "split" : "exercises");
+      else onClose();
+    };
+    window.addEventListener("keydown", closeOnEscape);
+    return () => window.removeEventListener("keydown", closeOnEscape);
+  }, [movementsOpen, onClose, preview, step]);
+
+  const toggleExercise = (id: string) => setSelection((items) => {
+    if (items.includes(id)) {
+      setAssignments((current) => { const next = { ...current }; delete next[id]; return next; });
+      return items.filter((item) => item !== id);
+    }
+    setAssignments((current) => ({ ...current, [id]: items.length % dayCount }));
+    return [...items, id];
+  });
+  const selectBodyPart = (part: BodyRegionName) => {
+    setBodyPart(part);
+    setArea("All");
+    setQuery("");
+    setMovementsOpen(true);
+  };
+  const showBodySide = (side: BodySide) => {
+    setBodySide(side);
+    setBodyPart(null);
+  };
+  const changeDayCount = (count: number) => {
+    setDayCount(count);
+    setDayNames(splitNamesFor(count));
+    setWeekdays((items) => items.slice(0, count));
+    setAssignments(Object.fromEntries(selection.map((id, index) => [id, index % count])));
+  };
+  const prepareSplit = () => {
+    const count = Math.min(dayCount, selection.length);
+    if (count !== dayCount) changeDayCount(count);
+    else setAssignments(Object.fromEntries(selection.map((id, index) => [id, index % count])));
+    setStep("split");
+  };
+  const toggleWeekday = (day: string) => setWeekdays((items) => items.includes(day) ? items.filter((item) => item !== day) : items.length < dayCount ? [...items, day] : items);
+  const saveBuilder = () => {
+    const days = dayNames.map((name, dayIndex) => ({ id: `custom-${dayIndex + 1}`, name: name.trim() || `Workout ${dayIndex + 1}`, exercises: selectedExercises.filter((exercise) => (assignments[exercise.id] ?? 0) === dayIndex) }));
+    const scheduledWeekdays = dayCount === 1 && startDate ? [new Date(`${startDate}T12:00:00`).toLocaleDateString("en-US", { weekday: "short" })] : weekdays;
+    onSave({ days, schedule: { startDate, weekdays: scheduledWeekdays, durationWeeks } });
+  };
+
+  return <>
+    <div className="modal-backdrop routine-builder-backdrop" role="presentation" onClick={onClose}>
+      <section className="routine-builder-drawer" role="dialog" aria-modal="true" aria-labelledby="routine-builder-title" onClick={(event) => event.stopPropagation()}>
+        <header>
+          <div><span>Step {step === "exercises" ? 1 : step === "split" ? 2 : 3} of 3</span><h2 id="routine-builder-title">{step === "exercises" ? "Choose exercises" : step === "split" ? dayCount === 1 ? "Set up your workout" : "Build your split" : dayCount === 1 ? "Choose a training day" : "Set your schedule"}</h2></div>
+          <button type="button" onClick={onClose} aria-label="Close routine builder"><X size={18} /></button>
+        </header>
+
+        {step === "exercises" && <section className="builder-anatomy" aria-labelledby="builder-anatomy-title">
+          <div className="builder-anatomy-copy">
+            <span>Muscle filter</span>
+            <h3 id="builder-anatomy-title">{bodyPart ?? "Select a muscle"}</h3>
+            <p>{bodyPart ? `${filtered.length} exercise${filtered.length === 1 ? "" : "s"}` : "Tap the body to filter exercises"}</p>
+            <div className="body-side-toggle"><button type="button" className={bodySide === "front" ? "active" : ""} onClick={() => showBodySide("front")}>Front</button><button type="button" className={bodySide === "back" ? "active" : ""} onClick={() => showBodySide("back")}>Back</button></div>
+            {bodyPart && <button type="button" className="builder-clear-focus" onClick={() => setBodyPart(null)}>Clear focus <X size={13} /></button>}
+            <button type="button" className="builder-open-movements" onClick={() => setMovementsOpen(true)} aria-expanded={movementsOpen}>{bodyPart ? `Browse ${filtered.length} exercises` : "Browse exercises"} <ArrowRight size={15} /></button>
+          </div>
+          <div className="builder-anatomy-stage">
+            <div className={`body-model ${bodySide === "back" ? "show-back" : ""}`}>
+              {(["front", "back"] as BodySide[]).map((side) => {
+                const selectedArtwork = bodyPart ? bodyRegionArtwork[side][bodyPart] : undefined;
+                return <div className={`body-face body-${side}`} key={`builder-${side}`} aria-hidden={bodySide !== side}><Image src={selectedArtwork ?? `/anatomy/body-${side}.png`} alt={`${side} anatomical muscle map${selectedArtwork ? ` highlighting ${bodyPart?.toLowerCase()}` : ""}`} fill sizes="140px" /><svg className="muscle-map" viewBox="0 0 100 150" role="group" aria-label={`${side} muscle groups`}>{bodyRegions[side].map((region) => <g className={`muscle-region ${bodyPart === region.name ? "selected" : ""}`} key={`builder-${side}-${region.name}`} role="button" tabIndex={bodySide === side ? 0 : -1} aria-label={`Show ${region.name.toLowerCase()} exercises`} onClick={() => selectBodyPart(region.name)} onKeyDown={(event) => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); selectBodyPart(region.name); } }}><title>{region.name}</title>{region.paths.map((path, index) => <path d={path} key={`builder-${region.name}-${index}`} />)}</g>)}</svg></div>;
+              })}
+            </div>
+          </div>
+        </section>}
+
+        {step === "split" && <section className="builder-step-panel">
+          <div className="builder-step-intro"><span>Training days</span><h3>{dayCount === 1 ? "Build one workout" : "Choose days per week"}</h3><p>{dayCount === 1 ? "Your exercises are ready. Name the workout or continue." : "Your exercises are already assigned. Change anything only if you want to."}</p></div>
+          <div className="builder-split-status"><Check size={16} /><div><strong>{splitReady ? dayCount === 1 ? "Your workout is ready" : "Your split is ready" : "Choose fewer training days"}</strong><span>{splitReady ? dayCount === 1 ? "Continue to choose its date." : "Continue to set your workout dates." : "Each training day needs at least one exercise."}</span></div></div>
+          <div className="builder-day-count"><span>Training days</span><div>{[1, 2, 3, 4, 5, 6].map((count) => <button type="button" className={dayCount === count ? "active" : ""} disabled={count > selection.length} key={count} onClick={() => changeDayCount(count)}>{count}</button>)}</div></div>
+          <div className="builder-split-days">{dayNames.map((name, dayIndex) => <label key={`split-day-${dayIndex}`}><span>Day {dayIndex + 1}</span><input value={name} onChange={(event) => setDayNames((items) => items.map((item, index) => index === dayIndex ? event.target.value : item))} aria-label={`Name for workout day ${dayIndex + 1}`} /><small>{selectedExercises.filter((exercise) => (assignments[exercise.id] ?? 0) === dayIndex).length} exercises</small></label>)}</div>
+          <div className="builder-assignments"><div><span>Optional: adjust exercises</span><small>{selectedExercises.length} total</small></div>{selectedExercises.map((exercise) => <article key={`assignment-${exercise.id}`}><div><strong>{exercise.name}</strong><small>{exercise.primary}</small></div><select value={assignments[exercise.id] ?? 0} onChange={(event) => setAssignments((items) => ({ ...items, [exercise.id]: Number(event.target.value) }))} aria-label={`Assign ${exercise.name} to a workout`}>{dayNames.map((name, dayIndex) => <option value={dayIndex} key={`${exercise.id}-day-${dayIndex}`}>{name || `Day ${dayIndex + 1}`}</option>)}</select></article>)}</div>
+        </section>}
+
+        {step === "schedule" && <section className="builder-step-panel builder-schedule-panel">
+          <div className="builder-step-intro"><span>Workout dates</span><h3>{dayCount === 1 ? "Choose your weekly day" : "Set your schedule"}</h3><p>{dayCount === 1 ? "This workout repeats every week on the day you select." : "Choose when this split starts and which days you train."}</p></div>
+          <label className="builder-date-field"><span>{dayCount === 1 ? "First workout" : "Start date"}</span><input type="date" value={startDate} onChange={(event) => setStartDate(event.target.value)} /></label>
+          {dayCount === 1 && <div className="builder-day-picker" role="group" aria-label="Choose a workout day">{datePickerDays.map((item) => <button type="button" className={startDate === item.iso ? "active" : ""} aria-pressed={startDate === item.iso} key={item.iso} onClick={() => setStartDate(item.iso)}><i /><strong className="dot-num">{item.date}</strong><small>{item.day}</small></button>)}</div>}
+          {dayCount > 1 && <div className="builder-weekdays"><div><span>Training days</span><small>Select {dayCount}</small></div><div>{scheduleWeekdays.map((day) => <button type="button" className={weekdays.includes(day) ? "active" : ""} key={day} onClick={() => toggleWeekday(day)}>{day}</button>)}</div>{weekdays.length !== dayCount && <p>Select exactly {dayCount} training days.</p>}</div>}
+          <div className="builder-duration"><span>Repeat for</span><div>{[[4, "4 weeks"], [8, "8 weeks"], [12, "12 weeks"], [0, "Ongoing"]].map(([value, label]) => <button type="button" className={(durationWeeks ?? 0) === value ? "active" : ""} key={value} onClick={() => setDurationWeeks(value === 0 ? null : Number(value))}>{label}</button>)}</div></div>
+          <div className="builder-schedule-summary"><span>Your plan</span><strong>{dayCount === 1 ? startDate ? `Every ${new Date(`${startDate}T12:00:00`).toLocaleDateString("en-US", { weekday: "long" })}` : "One workout each week" : `${dayCount} workouts each week`}</strong><p>{dayCount === 1 ? startDate ? `Starts ${new Date(`${startDate}T12:00:00`).toLocaleDateString("en-US", { month: "long", day: "numeric" })} · ${durationWeeks ? `${durationWeeks} weeks` : "Ongoing"}` : "Choose a start date" : `${weekdays.length ? weekdays.join(" · ") : "Choose training days"} · ${durationWeeks ? `${durationWeeks} weeks` : "Ongoing"}`}</p></div>
+        </section>}
+
+        {step === "exercises" && <footer><div><strong className="dot-num">{String(selection.length).padStart(2, "0")}</strong><span>exercise{selection.length === 1 ? "" : "s"}<small>{selection.length ? "Ready to continue" : "Select at least 1"}</small></span></div><button type="button" disabled={!selection.length} onClick={prepareSplit}>Next <ArrowRight size={17} /></button></footer>}
+        {step === "split" && <footer><div className="builder-step-back-wrap"><button type="button" className="builder-step-back" onClick={() => setStep("exercises")}><ArrowLeft size={16} /> Back</button></div><button type="button" disabled={!splitReady} onClick={() => setStep("schedule")}>Continue <ArrowRight size={17} /></button></footer>}
+        {step === "schedule" && <footer><div className="builder-step-back-wrap"><button type="button" className="builder-step-back" onClick={() => setStep("split")}><ArrowLeft size={16} /> Back</button></div><button type="button" disabled={!startDate || (dayCount > 1 && weekdays.length !== dayCount)} onClick={saveBuilder}>Save routine <Check size={17} /></button></footer>}
+      </section>
+    </div>
+    {movementsOpen && <div className="modal-backdrop builder-movements-backdrop" role="presentation" onClick={() => setMovementsOpen(false)}>
+      <section className="builder-movements-modal" role="dialog" aria-modal="true" aria-labelledby="builder-movements-title" onClick={(event) => event.stopPropagation()}>
+        <header><div><span>{bodyPart ?? "All exercises"}</span><h2 id="builder-movements-title">Browse exercises</h2></div><button type="button" onClick={() => setMovementsOpen(false)} aria-label="Close exercises"><X size={18} /></button></header>
+        <div className="builder-tools">
+          <div className="builder-search"><Search size={18} /><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search exercises" aria-label="Search exercises" />{query && <button type="button" onClick={() => setQuery("")} aria-label="Clear search"><X size={15} /></button>}</div>
+          <div className="builder-filters" aria-label="Filter by body area">{bodyAreas.map((item) => <button type="button" key={item} className={area === item ? "active" : ""} onClick={() => { setArea(item); setBodyPart(null); }}>{item}</button>)}</div>
+        </div>
+        <div className="builder-results">
+          <div className="builder-results-heading"><span>{filtered.length} exercises</span><small>{selection.length ? `${selection.length} selected` : "Select exercises"}</small></div>
+          {filtered.length ? <div className="builder-exercise-list">{filtered.map((exercise) => {
+            const selected = selection.includes(exercise.id);
+            return <article className={selected ? "selected" : ""} key={exercise.id}><button type="button" className="builder-exercise-preview" onClick={() => setPreview(exercise)}><span className="builder-exercise-image"><Image src={exercise.heroImage} alt="" fill sizes="68px" /></span><span><strong>{exercise.name}</strong><small>{exercise.primary} · {exercise.equipment}</small><em>{exercise.sets} sets · {exercise.reps} reps</em></span><ChevronRight size={16} /></button><button type="button" className="builder-exercise-toggle" onClick={() => toggleExercise(exercise.id)} aria-label={selected ? `Remove ${exercise.name}` : `Add ${exercise.name}`}>{selected ? <Check size={17} /> : <Plus size={17} />}</button></article>;
+          })}</div> : <div className="builder-empty"><Search size={22} /><strong>No exercises found</strong><span>Try another search or body area.</span></div>}
+        </div>
+        <footer><span><strong>{String(selection.length).padStart(2, "0")}</strong> selected</span><button type="button" onClick={() => setMovementsOpen(false)}>Done <Check size={16} /></button></footer>
+      </section>
+    </div>}
+    {preview && <ExerciseDetail exercise={preview} saved={saved.includes(preview.id)} onSave={() => onSaveExercise(preview.id)} onClose={() => setPreview(null)} onComplete={() => undefined} routineAction={{ selected: selection.includes(preview.id), onToggle: () => { toggleExercise(preview.id); setPreview(null); } }} />}
+  </>;
 }
 
 function MealLoggerDrawer({ onClose, onAdd }: { onClose: () => void; onAdd: (meal: MealDraft) => void }) {
@@ -740,20 +1009,20 @@ function ProfileView({ profile, savedCount, onRestart }: { profile: OnboardingPr
     <section>
       <div className="profile-hero">
         <div className="profile-avatar">{profile.displayName.slice(0, 2).toUpperCase()}</div>
-        <span>FlexForm athlete</span>
+        <span>FXFORCE athlete</span>
         <h1>{profile.displayName}</h1>
         <p>{profile.goal} · {profile.experience}</p>
       </div>
       <div className="profile-stats">
         <div><strong>{profile.daysPerWeek}</strong><span>Days / week</span></div>
         <div><strong>{savedCount}</strong><span>Saved moves</span></div>
-        <div><strong>12</strong><span>Sessions</span></div>
+        <div><strong>{profile.bodyMetrics ? profile.bodyMetrics.bmi.toFixed(1) : "—"}</strong><span>BMI</span></div>
       </div>
       <div className="appearance-card">
         <h3>Appearance</h3>
-        <p>Light or dark canvas, plus an accent that stays on charts, buttons, and checkmarks.</p>
-        <ThemeControls />
-        <AccentPicker />
+        <p>Choose how FXFORCE looks on this device.</p>
+        <div className="appearance-setting"><span>Theme</span><ThemeControls /></div>
+        <div className="appearance-setting"><span>Accent color</span><AccentPicker /></div>
       </div>
       <Card className="mb-4 gap-3 rounded-[28px] py-4 ring-foreground/5">
         <CardContent className="space-y-4">
@@ -772,7 +1041,7 @@ function ProfileView({ profile, savedCount, onRestart }: { profile: OnboardingPr
   );
 }
 
-function ExerciseDetail({ exercise, saved, onSave, onClose, onComplete }: { exercise: ExerciseGuide; saved: boolean; onSave: () => void; onClose: () => void; onComplete: () => void }) {
+function ExerciseDetail({ exercise, saved, onSave, onClose, onComplete, routineAction }: { exercise: ExerciseGuide; saved: boolean; onSave: () => void; onClose: () => void; onComplete: () => void; routineAction?: { selected: boolean; onToggle: () => void } }) {
   useEffect(() => {
     const closeOnEscape = (event: KeyboardEvent) => { if (event.key === "Escape") onClose(); };
     window.addEventListener("keydown", closeOnEscape);
@@ -824,7 +1093,7 @@ function ExerciseDetail({ exercise, saved, onSave, onClose, onComplete }: { exer
                 <div className="detail-meta"><span>Movement<strong>{exercise.movement}</strong></span><span>Equipment<strong>{exercise.equipment}</strong></span><span>Est. energy<strong>{exercise.caloriesPerMinute[0]}–{exercise.caloriesPerMinute[1]} kcal/min</strong></span></div>
               </section>
             </div>
-            <footer><button onClick={onComplete}><Check /> Mark guide complete</button></footer>
+            <footer><button onClick={routineAction ? routineAction.onToggle : onComplete}>{routineAction ? routineAction.selected ? <><X /> Remove from routine</> : <><Plus /> Add to routine</> : <><Check /> Mark guide complete</>}</button></footer>
           </div>
         </div>
       </article>
@@ -841,12 +1110,12 @@ function WorkoutSession({ day, onClose, onFinish }: { day: RoutineDay; onClose: 
 export default function FlexFormDashboard() {
   const [stage, setStage] = useState<AppStage>("auth");
   const [displayName, setDisplayName] = useState("Alex");
-  const [profile, setProfile] = useState<OnboardingProfile>({ displayName: "Alex", goal: "Build muscle", experience: "Returning", daysPerWeek: 4, setup: "Full gym", planMode: "generated" });
+  const [profile, setProfile] = useState<OnboardingProfile>({ displayName: "Alex", goal: "Build muscle", experience: "Returning", bodyMetrics: { heightCm: 175, weightKg: 75, bmi: 24.5 }, daysPerWeek: 4, setup: "Full gym", planMode: "generated" });
   const [view, setView] = useState<View>("Home");
-  const [routine, setRoutine] = useState<RoutineDay[]>(buildRoutine("Build muscle", 4, "Full gym"));
+  const [routinePlans, setRoutinePlans] = useState<RoutinePlan[]>(() => [{ id: "starter-routine", name: "Starter routine", days: buildRoutine("Build muscle", 4, "Full gym"), schedule: null }]);
+  const routine = routinePlans.flatMap((plan) => plan.days);
   const [saved, setSaved] = useState<string[]>(["bench-press", "back-squat"]);
-  const [customSelection, setCustomSelection] = useState<string[]>([]);
-  const [builderMode, setBuilderMode] = useState(false);
+  const [routineBuilderOpen, setRoutineBuilderOpen] = useState(false);
   const [selected, setSelected] = useState<ExerciseGuide | null>(null);
   const [activeWorkout, setActiveWorkout] = useState<RoutineDay | null>(null);
   const [mealLoggerOpen, setMealLoggerOpen] = useState(false);
@@ -860,10 +1129,33 @@ export default function FlexFormDashboard() {
   useEffect(() => {
     setHeaderGreeting(greetingForNow());
     setHeaderDate(new Date().toLocaleDateString("en-GB", { weekday: "long", day: "numeric", month: "long" }));
+    const storedRoutines = window.localStorage.getItem("flexform-routines");
+    if (storedRoutines) {
+      try {
+        const parsed = JSON.parse(storedRoutines) as RoutinePlan[];
+        if (Array.isArray(parsed)) setRoutinePlans(parsed);
+      } catch { /* Ignore invalid legacy data. */ }
+    } else {
+      const legacyRoutine = window.localStorage.getItem("flexform-routine");
+      if (legacyRoutine) {
+        try {
+          const days = JSON.parse(legacyRoutine) as RoutineDay[];
+          const storedSchedule = window.localStorage.getItem("flexform-routine-schedule");
+          const schedule = storedSchedule ? JSON.parse(storedSchedule) as RoutineSchedule : null;
+          if (Array.isArray(days) && days.length) {
+            const migrated: RoutinePlan[] = [{ id: `routine-migrated-${Date.now()}`, name: days.length === 1 ? days[0].name : `${days.length}-day routine`, days, schedule }];
+            setRoutinePlans(migrated);
+            window.localStorage.setItem("flexform-routines", JSON.stringify(migrated));
+            window.localStorage.removeItem("flexform-routine");
+            window.localStorage.removeItem("flexform-routine-schedule");
+          }
+        } catch { /* Ignore invalid legacy data. */ }
+      }
+    }
   }, []);
 
   const notify = (message: string) => { setToast(message); window.setTimeout(() => setToast(""), 2600); };
-  const overlayOpen = Boolean(selected || activeWorkout || mealLoggerOpen);
+  const overlayOpen = Boolean(selected || activeWorkout || mealLoggerOpen || routineBuilderOpen);
   useEffect(() => {
     if (!overlayOpen) return;
     const body = document.body;
@@ -911,29 +1203,81 @@ export default function FlexFormDashboard() {
   const finishOnboarding = (nextProfile: OnboardingProfile) => {
     setProfile(nextProfile);
     const nextRoutine = nextProfile.planMode === "generated" ? buildRoutine(nextProfile.goal, nextProfile.daysPerWeek, nextProfile.setup) : [];
-    setRoutine(nextRoutine);
-    setBuilderMode(nextProfile.planMode === "custom");
-    setView(nextProfile.planMode === "custom" ? "Library" : "Workout");
+    const planId = `routine-${Date.now()}`;
+    const nextPlans: RoutinePlan[] = nextRoutine.length ? [{ id: planId, name: "My routine", days: nextRoutine, schedule: null }] : [];
+    setRoutinePlans(nextPlans);
+    window.localStorage.setItem("flexform-routines", JSON.stringify(nextPlans));
+    setView("Workout");
     setStage("app");
+    setRoutineBuilderOpen(nextProfile.planMode === "custom");
     void saveOnboarding(nextProfile).catch(() => undefined);
-    if (nextRoutine.length) void saveRoutine(nextRoutine, "generated").catch(() => undefined);
+    if (nextRoutine.length) void saveRoutine(nextRoutine, "generated").then((cloudId) => {
+      if (!cloudId) return;
+      setRoutinePlans((items) => {
+        const updated = items.map((plan) => plan.id === planId ? { ...plan, cloudId } : plan);
+        window.localStorage.setItem("flexform-routines", JSON.stringify(updated));
+        return updated;
+      });
+    }).catch(() => undefined);
   };
-  const saveCustomRoutine = () => {
-    const selectedExercises = customSelection.map((id) => exercises.find((exercise) => exercise.id === id)).filter((item): item is ExerciseGuide => Boolean(item));
-    const next = [{ id: "custom-1", name: "Custom full body", exercises: selectedExercises }];
-    setRoutine(next); setBuilderMode(false); navigate("Workout"); notify("Custom routine saved.");
-    void saveRoutine(next, "custom").catch(() => undefined);
+  const saveCustomRoutine = ({ days, schedule }: CustomRoutineDraft) => {
+    const planId = `routine-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
+    const name = days.length === 1 ? days[0].name : `${days.length}-day routine`;
+    const plan: RoutinePlan = { id: planId, name, days, schedule };
+    setRoutinePlans((items) => {
+      const updated = [...items, plan];
+      window.localStorage.setItem("flexform-routines", JSON.stringify(updated));
+      return updated;
+    });
+    setRoutineBuilderOpen(false); navigate("Workout"); notify("Routine added.");
+    void saveRoutine(days, "custom", schedule).then((cloudId) => {
+      if (!cloudId) return;
+      setRoutinePlans((items) => {
+        const updated = items.map((item) => item.id === planId ? { ...item, cloudId } : item);
+        window.localStorage.setItem("flexform-routines", JSON.stringify(updated));
+        return updated;
+      });
+    }).catch(() => undefined);
+  };
+  const removeRoutine = (routineId: string) => {
+    const target = routinePlans.find((plan) => plan.id === routineId);
+    const updated = routinePlans.filter((plan) => plan.id !== routineId);
+    setRoutinePlans(updated);
+    window.localStorage.setItem("flexform-routines", JSON.stringify(updated));
+    notify("Routine deleted.");
+    void deleteRoutine(target?.cloudId).catch(() => notify("Routine removed from this device. Cloud deletion failed."));
   };
   const addMeal = (meal: MealDraft) => {
     setMeals((items) => [...items, { ...meal, id: `meal-${Date.now()}` }]);
     notify(`${meal.type} added to your meal log.`);
   };
   const closeMealLogger = useCallback(() => setMealLoggerOpen(false), []);
+  const closeRoutineBuilder = useCallback(() => setRoutineBuilderOpen(false), []);
 
   if (stage === "auth") return <AuthScreen onReady={(name) => { setDisplayName(name); setStage("onboarding"); }} />;
   if (stage === "onboarding") return <Onboarding displayName={displayName} onComplete={finishOnboarding} />;
 
   const workoutArea = view === "Workout";
 
-  return <div className="app-shell"><header className={`app-header ${workoutArea ? "plan-app-header" : ""}`}><div className="app-header-greeting"><Sparkles className="app-header-mark" size={27} /><div><strong>{headerGreeting}, {profile.displayName}</strong><span>{headerDate}</span></div></div><div className="app-header-actions"><button className="header-profile" onClick={() => navigate("Profile")} aria-label="Open profile"><UserRound size={21} /></button></div></header><main className={`app-content ${workoutArea ? "plan-content" : ""}`}>{view === "Home" && <HomeView routine={routine} saved={saved} onOpen={setSelected} onSave={toggleSaved} onNavigate={navigate} onStart={setActiveWorkout} />}{view === "Workout" && <WorkoutView routine={routine} calories={calories} workouts={workouts} onOpen={setSelected} onStart={setActiveWorkout} onCustomize={() => { setBuilderMode(true); setCustomSelection(routine.flatMap((day) => day.exercises.map((exercise) => exercise.id))); navigate("Library"); }} />}{view === "Library" && <LibraryView saved={saved} builderMode={builderMode} customSelection={customSelection} onOpen={setSelected} onSave={toggleSaved} onToggleSelection={(id) => setCustomSelection((items) => items.includes(id) ? items.filter((item) => item !== id) : [...items, id])} onSaveRoutine={saveCustomRoutine} />}{view === "Meal" && <MealView meals={meals} onOpenLogger={() => setMealLoggerOpen(true)} />}{view === "Profile" && <ProfileView profile={profile} savedCount={saved.length} onRestart={() => { void signOut(); setStage("auth"); }} />}</main><nav className="floating-nav">{navItems.map(({ label, icon: Icon }) => <button key={label} className={view === label || (view === "Library" && label === "Workout") ? "active" : ""} onClick={() => navigate(label)}><Icon size={19} /><span>{label}</span></button>)}</nav>{selected && <ExerciseDetail exercise={selected} saved={saved.includes(selected.id)} onSave={() => toggleSaved(selected.id)} onClose={() => setSelected(null)} onComplete={() => { void saveGuideCompletion(selected.id).catch(() => undefined); setSelected(null); notify("Guide complete. Clean reps win."); }} />}{activeWorkout && <WorkoutSession day={activeWorkout} onClose={() => setActiveWorkout(null)} onFinish={(completed, burned) => { void saveWorkoutSummary(activeWorkout.id, activeWorkout.name, completed, burned).catch(() => undefined); setCalories((value) => value + burned); setWorkouts((value) => value + 1); setActiveWorkout(null); notify(`${completed.length} exercises logged · ${burned} kcal estimated`); }} />}{mealLoggerOpen && <MealLoggerDrawer onClose={closeMealLogger} onAdd={addMeal} />}{toast && <div className="toast"><Check size={15} />{toast}</div>}</div>;
+  return (
+    <div className="app-shell">
+      <header className={`app-header ${workoutArea ? "plan-app-header" : ""}`}>
+        <div className="app-header-greeting"><div className="app-header-logo"><Brand /></div><div className="app-header-copy"><strong>{headerGreeting}, {profile.displayName}</strong><span>{headerDate}</span></div></div>
+        <div className="app-header-actions"><button className="header-profile" onClick={() => navigate("Profile")} aria-label="Open profile"><UserRound size={21} /></button></div>
+      </header>
+      <main className={`app-content ${workoutArea ? "plan-content" : ""}`}>
+        {view === "Home" && <HomeView routine={routine} saved={saved} onOpen={setSelected} onSave={toggleSaved} onNavigate={navigate} onStart={setActiveWorkout} />}
+        {view === "Workout" && <WorkoutView plans={routinePlans} calories={calories} workouts={workouts} onOpen={setSelected} onStart={setActiveWorkout} onCustomize={() => setRoutineBuilderOpen(true)} onDelete={removeRoutine} />}
+        {view === "Library" && <LibraryView saved={saved} onOpen={setSelected} onSave={toggleSaved} />}
+        {view === "Meal" && <MealView meals={meals} onOpenLogger={() => setMealLoggerOpen(true)} />}
+        {view === "Profile" && <ProfileView profile={profile} savedCount={saved.length} onRestart={() => { void signOut(); setStage("auth"); }} />}
+      </main>
+      <nav className="floating-nav">{navItems.map(({ label, icon: Icon }) => <button key={label} className={view === label || (view === "Library" && label === "Workout") ? "active" : ""} onClick={() => navigate(label)}><Icon size={19} /><span>{label}</span></button>)}</nav>
+      {routineBuilderOpen && <RoutineBuilderDrawer initialSelection={[]} initialDayCount={1} saved={saved} onClose={closeRoutineBuilder} onSaveExercise={toggleSaved} onSave={saveCustomRoutine} />}
+      {selected && <ExerciseDetail exercise={selected} saved={saved.includes(selected.id)} onSave={() => toggleSaved(selected.id)} onClose={() => setSelected(null)} onComplete={() => { void saveGuideCompletion(selected.id).catch(() => undefined); setSelected(null); notify("Guide complete. Clean reps win."); }} />}
+      {activeWorkout && <WorkoutSession day={activeWorkout} onClose={() => setActiveWorkout(null)} onFinish={(completed, burned) => { void saveWorkoutSummary(activeWorkout.id, activeWorkout.name, completed, burned).catch(() => undefined); setCalories((value) => value + burned); setWorkouts((value) => value + 1); setActiveWorkout(null); notify(`${completed.length} exercises logged · ${burned} kcal estimated`); }} />}
+      {mealLoggerOpen && <MealLoggerDrawer onClose={closeMealLogger} onAdd={addMeal} />}
+      {toast && <div className="toast"><Check size={15} />{toast}</div>}
+    </div>
+  );
 }

@@ -5,12 +5,18 @@ export type OnboardingProfile = {
   displayName: string;
   goal: Goal;
   experience: string;
+  bodyMetrics: {
+    heightCm: number;
+    weightKg: number;
+    bmi: number;
+  } | null;
   daysPerWeek: number;
   setup: TrainingSetup;
   planMode: "generated" | "custom";
 };
 
 type RoutinePayload = Array<{ id: string; name: string; exercises: Array<{ id: string; name: string }> }>;
+type RoutineSchedulePayload = { startDate: string; weekdays: string[]; durationWeeks: number | null };
 
 export async function saveOnboarding(profile: OnboardingProfile) {
   if (typeof window !== "undefined") localStorage.setItem("flexform-profile", JSON.stringify(profile));
@@ -23,6 +29,9 @@ export async function saveOnboarding(profile: OnboardingProfile) {
     display_name: profile.displayName,
     goal: profile.goal,
     experience: profile.experience,
+    height_cm: profile.bodyMetrics?.heightCm ?? null,
+    weight_kg: profile.bodyMetrics?.weightKg ?? null,
+    bmi: profile.bodyMetrics?.bmi ?? null,
     days_per_week: profile.daysPerWeek,
     equipment_setup: profile.setup,
     plan_mode: profile.planMode,
@@ -33,13 +42,19 @@ export async function saveOnboarding(profile: OnboardingProfile) {
   return "supabase" as const;
 }
 
-export async function saveRoutine(days: RoutinePayload, source: "generated" | "custom") {
-  if (typeof window !== "undefined") localStorage.setItem("flexform-routine", JSON.stringify(days));
+export async function saveRoutine(days: RoutinePayload, source: "generated" | "custom", schedule?: RoutineSchedulePayload | null) {
   const supabase = createClient();
-  if (!supabase) return "device" as const;
+  if (!supabase) return null;
   const { data: { user } } = await supabase.auth.getUser();
-  if (!user) return "device" as const;
-  const { data: routine, error } = await supabase.from("routines").insert({ user_id: user.id, name: "My FlexForm routine", source }).select("id").single();
+  if (!user) return null;
+  const { data: routine, error } = await supabase.from("routines").insert({
+    user_id: user.id,
+    name: days.length === 1 ? days[0].name : `${days.length}-day routine`,
+    source,
+    start_date: schedule?.startDate || null,
+    weekdays: schedule?.weekdays ?? [],
+    duration_weeks: schedule?.durationWeeks ?? null,
+  }).select("id").single();
   if (error || !routine) throw error ?? new Error("Routine was not created");
   const rows = days.flatMap((day, dayIndex) => day.exercises.map((exercise, exerciseIndex) => ({
     routine_id: routine.id,
@@ -53,6 +68,16 @@ export async function saveRoutine(days: RoutinePayload, source: "generated" | "c
     const { error: itemError } = await supabase.from("routine_exercises").insert(rows);
     if (itemError) throw itemError;
   }
+  return routine.id as string;
+}
+
+export async function deleteRoutine(routineId?: string) {
+  const supabase = createClient();
+  if (!supabase || !routineId) return "device" as const;
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return "device" as const;
+  const { error } = await supabase.from("routines").delete().eq("user_id", user.id).eq("id", routineId);
+  if (error) throw error;
   return "supabase" as const;
 }
 

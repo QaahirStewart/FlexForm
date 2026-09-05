@@ -134,7 +134,7 @@ export function DotMeter({
         <span>{right}</span>
       </div>
       <div className="dot-meter-grid" style={{ gridTemplateColumns: `repeat(${columns}, 1fr)` }} aria-hidden>
-        {Array.from({ length: 3 * columns }, (_, index) => (
+        {Array.from({ length: 4 * columns }, (_, index) => (
           <span key={index} className={cn("dot-cell", index % columns < filled && "on")} />
         ))}
       </div>
