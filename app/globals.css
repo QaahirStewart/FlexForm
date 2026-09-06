@@ -428,7 +428,7 @@ h1, h2, h3, .brand strong {
 .body-explorer > header { align-items: flex-start; display: flex; gap: 14px; justify-content: space-between; }
 .body-explorer > header .eyebrow { font-size: 9px; }
 .body-explorer > header h2 { font-size: clamp(21px, 6vw, 28px); line-height: 1.05; margin: 5px 0 0; max-width: 330px; }
-.body-view-controls { align-items: flex-end; display: flex; flex-direction: column; gap: 6px; }
+.body-view-controls { align-items: center; display: flex; flex-wrap: wrap; gap: 6px; justify-content: flex-end; }
 .body-side-toggle { background: var(--muted); border-radius: 999px; display: flex; flex: 0 0 auto; padding: 3px; }
 .body-side-toggle button { background: transparent; border: 0; border-radius: 999px; color: var(--muted-foreground); font-size: 10px; font-weight: 650; height: 30px; padding: 0 11px; }
 .body-side-toggle button.active { background: var(--inverse); color: var(--inverse-fg); }
@@ -440,11 +440,11 @@ h1, h2, h3, .brand strong {
 .body-face.body-back { transform: rotateY(180deg); }
 .body-face[aria-hidden="true"] { pointer-events: none; }
 .body-face > img { object-fit: contain; }
+.body-face > img.body-art-layer { mix-blend-mode: darken; }
 .muscle-map { height: 100%; inset: 0; overflow: visible; position: absolute; transform: translateZ(2px); width: 100%; z-index: 2; }
 .muscle-region { cursor: pointer; outline: 0; }
-.muscle-region path { fill: rgba(0, 0, 0, .001); pointer-events: all; stroke: transparent; stroke-width: .8; transition: fill .16s ease, stroke .16s ease; }
-.muscle-region:hover path, .muscle-region:focus-visible path { fill: color-mix(in srgb, var(--brand) 18%, transparent); stroke: color-mix(in srgb, var(--brand) 64%, transparent); }
-.muscle-region.selected path { fill: color-mix(in srgb, var(--brand) 46%, transparent); filter: saturate(1.15); stroke: var(--brand); }
+.muscle-region path { fill: rgba(0, 0, 0, .001); pointer-events: all; stroke: transparent; }
+.muscle-region:hover path, .muscle-region:focus-visible path, .muscle-region.selected path { fill: rgba(0, 0, 0, .001); filter: none; stroke: transparent; }
 .rotate-body { align-items: center; background: var(--muted); border: 0; border-radius: 999px; color: var(--foreground); display: flex; font-size: 11px; font-weight: 650; gap: 7px; height: 38px; justify-content: center; margin-top: 4px; padding: 0 14px; }
 .body-selection-copy { align-self: stretch; background: var(--muted); border-radius: 20px; margin-top: 16px; padding: 16px; }
 .body-selection-copy > span { color: var(--brand); font-size: 9px; font-weight: 750; letter-spacing: .1em; text-transform: uppercase; }
@@ -458,6 +458,7 @@ h1, h2, h3, .brand strong {
 .exercise-art { aspect-ratio: 1 / 1; background: #fafbf9; overflow: hidden; position: relative; }
 .exercise-art::after { background: var(--brand); bottom: 0; content: ""; height: 4px; left: 0; position: absolute; right: 0; }
 .exercise-art img { object-fit: contain; padding: 4px; }
+.hero-sheet-start img { object-fit: contain !important; padding: 0 !important; transform: scale(2); transform-origin: left top; }
 .exercise-copy { display: flex; flex-direction: column; min-height: 166px; min-width: 0; padding: 14px 12px 12px; }
 .exercise-card-heading { align-items: center; display: flex; gap: 7px; min-width: 0; }
 .exercise-card-heading > span { background: var(--brand); border-radius: 999px; color: white; flex: 0 0 auto; font-size: 8px; font-weight: 750; letter-spacing: .08em; line-height: 1; padding: 6px 8px; text-transform: uppercase; }
