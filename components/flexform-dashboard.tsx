@@ -156,6 +156,7 @@ const goals: Array<{ value: Goal; copy: string }> = [
 const accentLabel = { blue: "Push", green: "Lower", purple: "Pull", orange: "Hinge" };
 
 type BodySide = "front" | "back";
+type BodyModelVariant = "male" | "female";
 type BodyRegionName = "Chest" | "Shoulders" | "Arms" | "Core" | "Back" | "Glutes" | "Legs" | "Hamstrings" | "Calves";
 
 const bodyRegions: Record<BodySide, Array<{ name: BodyRegionName; paths: string[] }>> = {
@@ -229,24 +230,16 @@ const bodyRegionTerms: Record<BodyRegionName, string[]> = {
   Calves: ["calf", "calves", "gastrocnemius", "soleus", "plantar flexion"],
 };
 
-const bodyRegionArtwork: Record<BodySide, Partial<Record<BodyRegionName, string>>> = {
-  front: {
-    Shoulders: "/anatomy/body-front-shoulders.png",
-    Chest: "/anatomy/body-front-chest.png",
-    Arms: "/anatomy/body-front-arms.png",
-    Core: "/anatomy/body-front-core.png",
-    Legs: "/anatomy/body-front-legs.png",
-    Calves: "/anatomy/body-front-calves.png",
-  },
-  back: {
-    Shoulders: "/anatomy/body-back-shoulders.png",
-    Back: "/anatomy/body-back-back.png",
-    Arms: "/anatomy/body-back-arms.png",
-    Glutes: "/anatomy/body-back-glutes.png",
-    Hamstrings: "/anatomy/body-back-hamstrings.png",
-    Calves: "/anatomy/body-back-calves.png",
-  },
+const bodyModelArtwork: Record<BodyModelVariant, Record<BodySide, string>> = {
+  male: { front: "/anatomy/body-front.png", back: "/anatomy/body-back.png" },
+  female: { front: "/anatomy/body-female-front.png", back: "/anatomy/body-female-back.png" },
 };
+
+function selectedBodyRegionLabel(parts: BodyRegionName[]) {
+  if (!parts.length) return "Tap muscles";
+  if (parts.length <= 2) return parts.join(" + ");
+  return `${parts.length} muscles selected`;
+}
 
 function Brand({ inverse = false }: { inverse?: boolean }) {
   return (
@@ -633,7 +626,8 @@ function WorkoutView({ plans, calories, workouts, onOpen, onStart, onCustomize, 
 function LibraryView({ saved, onOpen, onSave }: { saved: string[]; onOpen: (exercise: ExerciseGuide) => void; onSave: (id: string) => void }) {
   const [query, setQuery] = useState("");
   const [bodySide, setBodySide] = useState<BodySide>("front");
-  const [bodyPart, setBodyPart] = useState<BodyRegionName | null>(null);
+  const [bodyModel, setBodyModel] = useState<BodyModelVariant>("male");
+  const [bodyParts, setBodyParts] = useState<BodyRegionName[]>([]);
   const [area, setArea] = useState<(typeof bodyAreas)[number]>("All");
   const [muscle, setMuscle] = useState<(typeof muscleGroups)[number]>("All muscles");
   const [equipment, setEquipment] = useState<(typeof equipmentOptions)[number]>("All");
@@ -641,12 +635,12 @@ function LibraryView({ saved, onOpen, onSave }: { saved: string[]; onOpen: (exer
   const filtered = useMemo(() => exercises.filter((exercise) => {
     const haystack = `${exercise.name} ${exercise.primary} ${exercise.secondary.join(" ")} ${exercise.movement}`.toLowerCase();
     const normalizedMuscle = muscle.toLowerCase().replace("deltoids", "deltoid").replace("calves", "gastrocnemius");
-    const bodyPartMatch = !bodyPart || bodyRegionTerms[bodyPart].some((term) => haystack.includes(term));
+    const bodyPartMatch = !bodyParts.length || bodyParts.some((part) => bodyRegionTerms[part].some((term) => haystack.includes(term)));
     return bodyPartMatch && (!query || haystack.includes(query.toLowerCase())) && (area === "All" || exercise.bodyArea === area) && (muscle === "All muscles" || haystack.includes(normalizedMuscle)) && (equipment === "All" || exercise.equipment === equipment) && (difficulty === "All" || exercise.level === difficulty);
-  }), [area, bodyPart, difficulty, equipment, muscle, query]);
-  const clear = () => { setBodyPart(null); setArea("All"); setMuscle("All muscles"); setEquipment("All"); setDifficulty("All"); setQuery(""); };
+  }), [area, bodyParts, difficulty, equipment, muscle, query]);
+  const clear = () => { setBodyParts([]); setArea("All"); setMuscle("All muscles"); setEquipment("All"); setDifficulty("All"); setQuery(""); };
   const selectBodyPart = (part: BodyRegionName) => {
-    setBodyPart((current) => current === part ? null : part);
+    setBodyParts((current) => current.includes(part) ? current.filter((item) => item !== part) : [...current, part]);
     setArea("All");
     setMuscle("All muscles");
     setEquipment("All");
@@ -655,26 +649,24 @@ function LibraryView({ saved, onOpen, onSave }: { saved: string[]; onOpen: (exer
   };
   const showBodySide = (side: BodySide) => {
     setBodySide(side);
-    setBodyPart(null);
   };
 
-  return <section><div className="view-heading"><span className="eyebrow">35 anatomical movement guides</span><h1>Exercise library.</h1><p>Tap a muscle on the body to instantly explore every related exercise, or use the detailed filters below.</p></div>
+  return <section><div className="view-heading"><span className="eyebrow">{exercises.length} anatomical movement guides</span><h1>Exercise library.</h1><p>Tap one or more muscles to explore every related exercise, or use the detailed filters below.</p></div>
     <section className="body-explorer" aria-labelledby="body-explorer-title">
-      <header><div><span className="eyebrow">Interactive muscle map</span><h2 id="body-explorer-title">Where do you want to train?</h2></div><div className="body-side-toggle"><button className={bodySide === "front" ? "active" : ""} onClick={() => showBodySide("front")}>Front</button><button className={bodySide === "back" ? "active" : ""} onClick={() => showBodySide("back")}>Back</button></div></header>
+      <header><div><span className="eyebrow">Interactive muscle map</span><h2 id="body-explorer-title">Where do you want to train?</h2></div><div className="body-view-controls"><div className="body-side-toggle" role="group" aria-label="Choose anatomy model"><button className={bodyModel === "male" ? "active" : ""} aria-pressed={bodyModel === "male"} onClick={() => setBodyModel("male")}>Male</button><button className={bodyModel === "female" ? "active" : ""} aria-pressed={bodyModel === "female"} onClick={() => setBodyModel("female")}>Female</button></div><div className="body-side-toggle" role="group" aria-label="Choose body view"><button className={bodySide === "front" ? "active" : ""} aria-pressed={bodySide === "front"} onClick={() => showBodySide("front")}>Front</button><button className={bodySide === "back" ? "active" : ""} aria-pressed={bodySide === "back"} onClick={() => showBodySide("back")}>Back</button></div></div></header>
       <div className="body-explorer-layout">
         <div className="body-model-stage">
           <div className={`body-model ${bodySide === "back" ? "show-back" : ""}`}>
             {(["front", "back"] as BodySide[]).map((side) => {
-              const selectedArtwork = bodyPart ? bodyRegionArtwork[side][bodyPart] : undefined;
-              return <div className={`body-face body-${side}`} key={side} aria-hidden={bodySide !== side}><Image src={selectedArtwork ?? `/anatomy/body-${side}.png`} alt={`${side} anatomical muscle map${selectedArtwork ? ` highlighting ${bodyPart?.toLowerCase()}` : ""}`} fill sizes="(max-width: 620px) 74vw, 300px" priority={side === "front"} /><svg className="muscle-map" viewBox="0 0 100 150" role="group" aria-label={`${side} muscle groups`}>{bodyRegions[side].map((region) => <g className={`muscle-region ${bodyPart === region.name ? "selected" : ""}`} key={`${side}-${region.name}`} role="button" tabIndex={bodySide === side ? 0 : -1} aria-label={`Show ${region.name.toLowerCase()} exercises`} onClick={() => selectBodyPart(region.name)} onKeyDown={(event) => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); selectBodyPart(region.name); } }}><title>{region.name}</title>{region.paths.map((path, index) => <path d={path} key={`${region.name}-${index}`} />)}</g>)}</svg></div>;
+              return <div className={`body-face body-${side}`} key={side} aria-hidden={bodySide !== side}><Image src={bodyModelArtwork[bodyModel][side]} alt={`${bodyModel} ${side} anatomical muscle map${bodyParts.length ? ` highlighting ${bodyParts.join(", ").toLowerCase()}` : ""}`} fill sizes="(max-width: 620px) 74vw, 300px" priority={side === "front"} /><svg className="muscle-map" viewBox="0 0 100 150" role="group" aria-label={`${side} muscle groups`}>{bodyRegions[side].map((region) => { const isSelected = bodyParts.includes(region.name); return <g className={`muscle-region ${isSelected ? "selected" : ""}`} key={`${side}-${region.name}`} role="button" tabIndex={bodySide === side ? 0 : -1} aria-pressed={isSelected} aria-label={`${isSelected ? "Remove" : "Add"} ${region.name.toLowerCase()} filter`} onClick={() => selectBodyPart(region.name)} onKeyDown={(event) => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); selectBodyPart(region.name); } }}><title>{region.name}</title>{region.paths.map((path, index) => <path d={path} key={`${region.name}-${index}`} />)}</g>; })}</svg></div>;
             })}
           </div>
           <button className="rotate-body" onClick={() => showBodySide(bodySide === "front" ? "back" : "front")}><RotateCcw size={16} /> Rotate to {bodySide === "front" ? "back" : "front"}</button>
         </div>
-        <div className="body-selection-copy"><span>Selected area</span><h3>{bodyPart ?? "Tap a muscle"}</h3><p>{bodyPart ? `${filtered.length} related exercise${filtered.length === 1 ? "" : "s"} shown below.` : "Choose any highlighted region on the front or back of the body."}</p>{bodyPart && <button onClick={() => setBodyPart(null)}>Clear selection <X size={14} /></button>}</div>
+        <div className="body-selection-copy"><span>Selected muscles</span><h3>{selectedBodyRegionLabel(bodyParts)}</h3><p>{bodyParts.length ? `${filtered.length} exercise${filtered.length === 1 ? "" : "s"} matching any selected muscle.` : "Choose one or more regions on the front or back of the body."}</p>{bodyParts.length > 0 && <button onClick={() => setBodyParts([])}>Clear selection <X size={14} /></button>}</div>
       </div>
     </section>
-    <SearchField value={query} onChange={setQuery} /><div className="filter-panel"><div><span>Body area</span><div className="filter-pills">{bodyAreas.map((item) => <button className={area === item ? "active" : ""} key={item} onClick={() => { setArea(item); setBodyPart(null); }}>{item}</button>)}</div></div><div className="select-filters"><label><span>Muscle</span><select value={muscle} onChange={(event) => { setMuscle(event.target.value as typeof muscle); setBodyPart(null); }}>{muscleGroups.map((item) => <option key={item}>{item}</option>)}</select></label><label><span>Equipment</span><select value={equipment} onChange={(event) => setEquipment(event.target.value as typeof equipment)}>{equipmentOptions.map((item) => <option key={item}>{item}</option>)}</select></label><label><span>Difficulty</span><select value={difficulty} onChange={(event) => setDifficulty(event.target.value as typeof difficulty)}>{difficultyOptions.map((item) => <option key={item}>{item}</option>)}</select></label></div></div><SectionTitle kicker={bodyPart ? `${filtered.length} ${bodyPart.toLowerCase()} movement${filtered.length === 1 ? "" : "s"}` : `${filtered.length} movement${filtered.length === 1 ? "" : "s"}`} title={bodyPart ? `Train your ${bodyPart.toLowerCase()}` : "Explore the index"} action={<button className="text-button" onClick={clear}>Reset filters</button>} />{filtered.length ? <div className="exercise-grid">{filtered.map((exercise) => <ExerciseCard key={exercise.id} exercise={exercise} saved={saved.includes(exercise.id)} onOpen={() => onOpen(exercise)} onSave={() => onSave(exercise.id)} />)}</div> : <div className="empty-state"><Search /><h2>No exact match</h2><p>Reset the filters or broaden the body area.</p><button className="primary-button" onClick={clear}>Reset filters</button></div>}</section>;
+    <SearchField value={query} onChange={setQuery} /><div className="filter-panel"><div><span>Body area</span><div className="filter-pills">{bodyAreas.map((item) => <button className={area === item ? "active" : ""} key={item} onClick={() => { setArea(item); setBodyParts([]); }}>{item}</button>)}</div></div><div className="select-filters"><label><span>Muscle</span><select value={muscle} onChange={(event) => { setMuscle(event.target.value as typeof muscle); setBodyParts([]); }}>{muscleGroups.map((item) => <option key={item}>{item}</option>)}</select></label><label><span>Equipment</span><select value={equipment} onChange={(event) => setEquipment(event.target.value as typeof equipment)}>{equipmentOptions.map((item) => <option key={item}>{item}</option>)}</select></label><label><span>Difficulty</span><select value={difficulty} onChange={(event) => setDifficulty(event.target.value as typeof difficulty)}>{difficultyOptions.map((item) => <option key={item}>{item}</option>)}</select></label></div></div><SectionTitle kicker={`${filtered.length} movement${filtered.length === 1 ? "" : "s"}`} title={bodyParts.length ? "Train selected muscles" : "Explore the index"} action={<button className="text-button" onClick={clear}>Reset filters</button>} />{filtered.length ? <div className="exercise-grid">{filtered.map((exercise) => <ExerciseCard key={exercise.id} exercise={exercise} saved={saved.includes(exercise.id)} onOpen={() => onOpen(exercise)} onSave={() => onSave(exercise.id)} />)}</div> : <div className="empty-state"><Search /><h2>No exact match</h2><p>Reset the filters or broaden the body area.</p><button className="primary-button" onClick={clear}>Reset filters</button></div>}</section>;
 }
 
 function RoutineBuilderDrawer({ initialSelection, initialDayCount, saved, onClose, onSaveExercise, onSave }: { initialSelection: string[]; initialDayCount: number; saved: string[]; onClose: () => void; onSaveExercise: (id: string) => void; onSave: (draft: CustomRoutineDraft) => void }) {
@@ -683,7 +675,8 @@ function RoutineBuilderDrawer({ initialSelection, initialDayCount, saved, onClos
   const [query, setQuery] = useState("");
   const [area, setArea] = useState<(typeof bodyAreas)[number]>("All");
   const [bodySide, setBodySide] = useState<BodySide>("front");
-  const [bodyPart, setBodyPart] = useState<BodyRegionName | null>(null);
+  const [bodyModel, setBodyModel] = useState<BodyModelVariant>("male");
+  const [bodyParts, setBodyParts] = useState<BodyRegionName[]>([]);
   const [selection, setSelection] = useState(() => Array.from(new Set(initialSelection)));
   const [dayCount, setDayCount] = useState(startingDayCount);
   const [dayNames, setDayNames] = useState(() => splitNamesFor(startingDayCount));
@@ -706,9 +699,9 @@ function RoutineBuilderDrawer({ initialSelection, initialDayCount, saved, onClos
   }, [startDate]);
   const filtered = useMemo(() => exercises.filter((exercise) => {
     const haystack = `${exercise.name} ${exercise.primary} ${exercise.secondary.join(" ")} ${exercise.equipment}`.toLowerCase();
-    const bodyPartMatch = !bodyPart || bodyRegionTerms[bodyPart].some((term) => haystack.includes(term));
+    const bodyPartMatch = !bodyParts.length || bodyParts.some((part) => bodyRegionTerms[part].some((term) => haystack.includes(term)));
     return bodyPartMatch && (!query || haystack.includes(query.trim().toLowerCase())) && (area === "All" || exercise.bodyArea === area);
-  }), [area, bodyPart, query]);
+  }), [area, bodyParts, query]);
   const selectedExercises = selection.map((id) => exercises.find((exercise) => exercise.id === id)).filter((exercise): exercise is ExerciseGuide => Boolean(exercise));
   const splitReady = dayNames.every((_, dayIndex) => selectedExercises.some((exercise) => (assignments[exercise.id] ?? 0) === dayIndex));
   useEffect(() => {
@@ -731,14 +724,12 @@ function RoutineBuilderDrawer({ initialSelection, initialDayCount, saved, onClos
     return [...items, id];
   });
   const selectBodyPart = (part: BodyRegionName) => {
-    setBodyPart(part);
+    setBodyParts((current) => current.includes(part) ? current.filter((item) => item !== part) : [...current, part]);
     setArea("All");
     setQuery("");
-    setMovementsOpen(true);
   };
   const showBodySide = (side: BodySide) => {
     setBodySide(side);
-    setBodyPart(null);
   };
   const changeDayCount = (count: number) => {
     setDayCount(count);
@@ -770,17 +761,16 @@ function RoutineBuilderDrawer({ initialSelection, initialDayCount, saved, onClos
         {step === "exercises" && <section className="builder-anatomy" aria-labelledby="builder-anatomy-title">
           <div className="builder-anatomy-copy">
             <span>Muscle filter</span>
-            <h3 id="builder-anatomy-title">{bodyPart ?? "Select a muscle"}</h3>
-            <p>{bodyPart ? `${filtered.length} exercise${filtered.length === 1 ? "" : "s"}` : "Tap the body to filter exercises"}</p>
-            <div className="body-side-toggle"><button type="button" className={bodySide === "front" ? "active" : ""} onClick={() => showBodySide("front")}>Front</button><button type="button" className={bodySide === "back" ? "active" : ""} onClick={() => showBodySide("back")}>Back</button></div>
-            {bodyPart && <button type="button" className="builder-clear-focus" onClick={() => setBodyPart(null)}>Clear focus <X size={13} /></button>}
-            <button type="button" className="builder-open-movements" onClick={() => setMovementsOpen(true)} aria-expanded={movementsOpen}>{bodyPart ? `Browse ${filtered.length} exercises` : "Browse exercises"} <ArrowRight size={15} /></button>
+            <h3 id="builder-anatomy-title">{selectedBodyRegionLabel(bodyParts)}</h3>
+            <p>{bodyParts.length ? `${filtered.length} exercise${filtered.length === 1 ? "" : "s"} match any selection` : "Tap one or more muscles to filter"}</p>
+            <div className="body-view-controls"><div className="body-side-toggle" role="group" aria-label="Choose anatomy model"><button type="button" className={bodyModel === "male" ? "active" : ""} aria-pressed={bodyModel === "male"} onClick={() => setBodyModel("male")}>Male</button><button type="button" className={bodyModel === "female" ? "active" : ""} aria-pressed={bodyModel === "female"} onClick={() => setBodyModel("female")}>Female</button></div><div className="body-side-toggle" role="group" aria-label="Choose body view"><button type="button" className={bodySide === "front" ? "active" : ""} aria-pressed={bodySide === "front"} onClick={() => showBodySide("front")}>Front</button><button type="button" className={bodySide === "back" ? "active" : ""} aria-pressed={bodySide === "back"} onClick={() => showBodySide("back")}>Back</button></div></div>
+            {bodyParts.length > 0 && <button type="button" className="builder-clear-focus" onClick={() => setBodyParts([])}>Clear focus <X size={13} /></button>}
+            <button type="button" className="builder-open-movements" onClick={() => setMovementsOpen(true)} aria-expanded={movementsOpen}>{bodyParts.length ? `Browse ${filtered.length} exercises` : "Browse all exercises"} <ArrowRight size={15} /></button>
           </div>
           <div className="builder-anatomy-stage">
             <div className={`body-model ${bodySide === "back" ? "show-back" : ""}`}>
               {(["front", "back"] as BodySide[]).map((side) => {
-                const selectedArtwork = bodyPart ? bodyRegionArtwork[side][bodyPart] : undefined;
-                return <div className={`body-face body-${side}`} key={`builder-${side}`} aria-hidden={bodySide !== side}><Image src={selectedArtwork ?? `/anatomy/body-${side}.png`} alt={`${side} anatomical muscle map${selectedArtwork ? ` highlighting ${bodyPart?.toLowerCase()}` : ""}`} fill sizes="140px" /><svg className="muscle-map" viewBox="0 0 100 150" role="group" aria-label={`${side} muscle groups`}>{bodyRegions[side].map((region) => <g className={`muscle-region ${bodyPart === region.name ? "selected" : ""}`} key={`builder-${side}-${region.name}`} role="button" tabIndex={bodySide === side ? 0 : -1} aria-label={`Show ${region.name.toLowerCase()} exercises`} onClick={() => selectBodyPart(region.name)} onKeyDown={(event) => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); selectBodyPart(region.name); } }}><title>{region.name}</title>{region.paths.map((path, index) => <path d={path} key={`builder-${region.name}-${index}`} />)}</g>)}</svg></div>;
+                return <div className={`body-face body-${side}`} key={`builder-${side}`} aria-hidden={bodySide !== side}><Image src={bodyModelArtwork[bodyModel][side]} alt={`${bodyModel} ${side} anatomical muscle map${bodyParts.length ? ` highlighting ${bodyParts.join(", ").toLowerCase()}` : ""}`} fill sizes="140px" /><svg className="muscle-map" viewBox="0 0 100 150" role="group" aria-label={`${side} muscle groups`}>{bodyRegions[side].map((region) => { const isSelected = bodyParts.includes(region.name); return <g className={`muscle-region ${isSelected ? "selected" : ""}`} key={`builder-${side}-${region.name}`} role="button" tabIndex={bodySide === side ? 0 : -1} aria-pressed={isSelected} aria-label={`${isSelected ? "Remove" : "Add"} ${region.name.toLowerCase()} filter`} onClick={() => selectBodyPart(region.name)} onKeyDown={(event) => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); selectBodyPart(region.name); } }}><title>{region.name}</title>{region.paths.map((path, index) => <path d={path} key={`builder-${region.name}-${index}`} />)}</g>; })}</svg></div>;
               })}
             </div>
           </div>
@@ -810,10 +800,10 @@ function RoutineBuilderDrawer({ initialSelection, initialDayCount, saved, onClos
     </div>
     {movementsOpen && <div className="modal-backdrop builder-movements-backdrop" role="presentation" onClick={() => setMovementsOpen(false)}>
       <section className="builder-movements-modal" role="dialog" aria-modal="true" aria-labelledby="builder-movements-title" onClick={(event) => event.stopPropagation()}>
-        <header><div><span>{bodyPart ?? "All exercises"}</span><h2 id="builder-movements-title">Browse exercises</h2></div><button type="button" onClick={() => setMovementsOpen(false)} aria-label="Close exercises"><X size={18} /></button></header>
+        <header><div><span>{bodyParts.length ? selectedBodyRegionLabel(bodyParts) : "All exercises"}</span><h2 id="builder-movements-title">Browse exercises</h2></div><button type="button" onClick={() => setMovementsOpen(false)} aria-label="Close exercises"><X size={18} /></button></header>
         <div className="builder-tools">
           <div className="builder-search"><Search size={18} /><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search exercises" aria-label="Search exercises" />{query && <button type="button" onClick={() => setQuery("")} aria-label="Clear search"><X size={15} /></button>}</div>
-          <div className="builder-filters" aria-label="Filter by body area">{bodyAreas.map((item) => <button type="button" key={item} className={area === item ? "active" : ""} onClick={() => { setArea(item); setBodyPart(null); }}>{item}</button>)}</div>
+          <div className="builder-filters" aria-label="Filter by body area">{bodyAreas.map((item) => <button type="button" key={item} className={area === item ? "active" : ""} onClick={() => { setArea(item); setBodyParts([]); }}>{item}</button>)}</div>
         </div>
         <div className="builder-results">
           <div className="builder-results-heading"><span>{filtered.length} exercises</span><small>{selection.length ? `${selection.length} selected` : "Select exercises"}</small></div>
