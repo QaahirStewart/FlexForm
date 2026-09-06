@@ -11,7 +11,6 @@ import {
   ChevronRight,
   Clock3,
   Coffee,
-  Droplet,
   Dumbbell,
   Eye,
   EyeOff,
@@ -23,6 +22,7 @@ import {
   Mail,
   Mic,
   Minus,
+  Pause,
   Play,
   Plus,
   RotateCcw,
@@ -38,6 +38,7 @@ import {
   Upload,
   X,
   Zap,
+  type LucideIcon,
 } from "lucide-react";
 import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
@@ -53,11 +54,10 @@ import {
 } from "@/lib/exercises";
 import { signInWithEmail, signOut, signUpWithEmail } from "@/lib/supabase/auth";
 import { saveGuideCompletion, syncFavoriteExercise } from "@/lib/supabase/guides";
-import { deleteRoutine, saveOnboarding, saveRoutine, saveWorkoutSummary, type OnboardingProfile } from "@/lib/supabase/product";
-import { DotMatrixChart, DotMeter, DotProgress } from "@/components/dot-matrix";
+import { deleteRoutine, saveOnboarding, saveRoutine, saveWorkoutSummary, type BodySex, type OnboardingProfile, type WorkoutExerciseLogPayload } from "@/lib/supabase/product";
+import { DotMatrixChart, DotMeter } from "@/components/dot-matrix";
 import { DateStrip, buildDateTicks, formatLongDate } from "@/components/date-strip";
 import { AccentPicker, ThemeControls } from "@/components/theme-controls";
-import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
@@ -72,6 +72,9 @@ type MealKind = "Breakfast" | "Lunch" | "Dinner" | "Snack";
 type MealEntry = { id: string; type: MealKind; time: string; title: string; calories: number; protein: number };
 type MealDraft = Omit<MealEntry, "id">;
 type MeasurementSystem = "metric" | "imperial";
+type WorkoutSetInput = { weight: string; reps: string; complete: boolean };
+type WorkoutExerciseInput = { sets: WorkoutSetInput[]; followedPlan: boolean; rpe: string; notes: string };
+type WorkoutDraft = Record<string, WorkoutExerciseInput>;
 
 const splitNameTemplates: Record<number, string[]> = {
   1: ["Workout"],
@@ -112,7 +115,8 @@ function bmiCategory(bmi: number) {
   return "High range";
 }
 
-function calculateBodyMetrics(system: MeasurementSystem, values: { heightCm: string; weightKg: string; heightFeet: string; heightInches: string; weightLb: string }): OnboardingProfile["bodyMetrics"] | null {
+function calculateBodyMetrics(system: MeasurementSystem, sex: BodySex | null, values: { heightCm: string; weightKg: string; heightFeet: string; heightInches: string; weightLb: string }): OnboardingProfile["bodyMetrics"] | null {
+  if (!sex) return null;
   let heightCm: number;
   let weightKg: number;
 
@@ -130,7 +134,7 @@ function calculateBodyMetrics(system: MeasurementSystem, values: { heightCm: str
   if (!Number.isFinite(heightCm) || !Number.isFinite(weightKg) || heightCm < 100 || heightCm > 250 || weightKg < 30 || weightKg > 300) return null;
   const bmi = weightKg / ((heightCm / 100) ** 2);
   if (bmi < 10 || bmi > 80) return null;
-  return { heightCm: Math.round(heightCm * 10) / 10, weightKg: Math.round(weightKg * 10) / 10, bmi: Math.round(bmi * 10) / 10 };
+  return { sex, heightCm: Math.round(heightCm * 10) / 10, weightKg: Math.round(weightKg * 10) / 10, bmi: Math.round(bmi * 10) / 10 };
 }
 
 const mealIcons = { Breakfast: Coffee, Lunch: Utensils, Dinner: Utensils, Snack: Apple };
@@ -340,6 +344,7 @@ function Onboarding({ displayName, onComplete }: { displayName: string; onComple
   const [step, setStep] = useState(0);
   const [goal, setGoal] = useState<Goal>("Build muscle");
   const [experience, setExperience] = useState("Returning");
+  const [bodySex, setBodySex] = useState<BodySex | null>(null);
   const [measurementSystem, setMeasurementSystem] = useState<MeasurementSystem>("metric");
   const [heightCm, setHeightCm] = useState("");
   const [weightKg, setWeightKg] = useState("");
@@ -350,7 +355,7 @@ function Onboarding({ displayName, onComplete }: { displayName: string; onComple
   const [setup, setSetup] = useState<TrainingSetup>("Full gym");
   const [planMode, setPlanMode] = useState<"generated" | "custom">("generated");
   const metricValues = { heightCm, weightKg, heightFeet, heightInches, weightLb };
-  const bodyMetrics = calculateBodyMetrics(measurementSystem, metricValues);
+  const bodyMetrics = calculateBodyMetrics(measurementSystem, bodySex, metricValues);
   const hasStartedMetrics = measurementSystem === "metric" ? Boolean(heightCm || weightKg) : Boolean(heightFeet || heightInches || weightLb);
 
   const changeMeasurementSystem = (nextSystem: MeasurementSystem) => {
@@ -372,11 +377,12 @@ function Onboarding({ displayName, onComplete }: { displayName: string; onComple
   const screens = [
     { kicker: "Your outcome", title: "What are we training for?", copy: "Your goal changes exercise priority, weekly volume, and session structure.", body: <div className="choice-grid">{goals.map((item) => <button key={item.value} className={goal === item.value ? "selected" : ""} onClick={() => setGoal(item.value)}><Target size={20} /><strong>{item.value}</strong><small>{item.copy}</small><i>{goal === item.value && <Check size={13} />}</i></button>)}</div> },
     { kicker: "Training history", title: "Where are you starting?", copy: "This keeps the routine challenging without making it reckless.", body: <div className="stacked-choices">{[["New", "I’m learning gym movements"], ["Returning", "I’ve trained before and I’m rebuilding"], ["Experienced", "I train consistently with solid technique"]].map(([value, label]) => <button key={value} className={experience === value ? "selected" : ""} onClick={() => setExperience(value)}><span>{value}</span><small>{label}</small><i>{experience === value && <Check size={14} />}</i></button>)}</div> },
-    { kicker: "Body metrics", title: "Find your baseline.", copy: "Add your height and weight for a quick BMI estimate.", body: <div className="bmi-calculator">
+    { kicker: "Body metrics", title: "Find your baseline.", copy: "Choose male or female, then add your height and weight for a quick BMI estimate.", body: <div className="bmi-calculator">
+      <fieldset className="bmi-sex"><legend>Choose your profile</legend><div role="radiogroup" aria-label="Sex"><button type="button" role="radio" aria-checked={bodySex === "male"} className={bodySex === "male" ? "selected" : ""} onClick={() => setBodySex("male")}><UserRound size={18} /><span>Male</span><i>{bodySex === "male" && <Check size={13} />}</i></button><button type="button" role="radio" aria-checked={bodySex === "female"} className={bodySex === "female" ? "selected" : ""} onClick={() => setBodySex("female")}><UserRound size={18} /><span>Female</span><i>{bodySex === "female" && <Check size={13} />}</i></button></div></fieldset>
       <div className="bmi-units" role="group" aria-label="Measurement system"><button type="button" className={measurementSystem === "metric" ? "active" : ""} onClick={() => changeMeasurementSystem("metric")}>Metric</button><button type="button" className={measurementSystem === "imperial" ? "active" : ""} onClick={() => changeMeasurementSystem("imperial")}>Imperial</button></div>
       {measurementSystem === "metric" ? <div className="bmi-fields"><label><span>Height</span><div><input type="number" inputMode="decimal" min="100" max="250" step="0.1" value={heightCm} onChange={(event) => setHeightCm(event.target.value)} placeholder="175" aria-label="Height in centimetres" /><small>cm</small></div></label><label><span>Weight</span><div><input type="number" inputMode="decimal" min="30" max="300" step="0.1" value={weightKg} onChange={(event) => setWeightKg(event.target.value)} placeholder="75" aria-label="Weight in kilograms" /><small>kg</small></div></label></div> : <div className="bmi-fields imperial"><label><span>Height</span><div><input type="number" inputMode="numeric" min="3" max="8" step="1" value={heightFeet} onChange={(event) => setHeightFeet(event.target.value)} placeholder="5" aria-label="Height in feet" /><small>ft</small></div></label><label><span>Height</span><div><input type="number" inputMode="decimal" min="0" max="11.9" step="0.1" value={heightInches} onChange={(event) => setHeightInches(event.target.value)} placeholder="9" aria-label="Additional height in inches" /><small>in</small></div></label><label><span>Weight</span><div><input type="number" inputMode="decimal" min="66" max="660" step="0.1" value={weightLb} onChange={(event) => setWeightLb(event.target.value)} placeholder="165" aria-label="Weight in pounds" /><small>lb</small></div></label></div>}
-      <div className={`bmi-result ${bodyMetrics ? "ready" : ""}`} aria-live="polite">{bodyMetrics ? <><div><span>Your BMI</span><strong className="dot-num">{bodyMetrics.bmi.toFixed(1)}</strong><small>{bmiCategory(bodyMetrics.bmi)}</small></div><div className="bmi-axis" aria-hidden="true"><div className="bmi-scale"><i style={{ left: `${Math.min(100, Math.max(0, ((bodyMetrics.bmi - 18.5) / 11.5) * 100))}%` }} /><span /><span /><span /><span /></div></div><div className="bmi-legend" aria-label="BMI scale legend"><span><b>Under</b><small>&lt;18.5</small></span><span><b>Healthy</b><small>18.5–24.9</small></span><span><b>Above</b><small>25–29.9</small></span><span><b>High</b><small>30+</small></span></div></> : <div className="bmi-placeholder"><Activity size={21} /><span>{hasStartedMetrics ? "Check that your measurements are within the supported range." : "Enter your measurements to see your result."}</span></div>}</div>
-      <p className="bmi-note">BMI is a general screening estimate, not a medical diagnosis.</p>
+      <div className={`bmi-result ${bodyMetrics ? "ready" : ""}`} aria-live="polite">{bodyMetrics ? <><div><span>Your BMI · {bodyMetrics.sex}</span><strong className="dot-num">{bodyMetrics.bmi.toFixed(1)}</strong><small>{bmiCategory(bodyMetrics.bmi)}</small></div><div className="bmi-axis" aria-hidden="true"><div className="bmi-scale"><i style={{ left: `${Math.min(100, Math.max(0, ((bodyMetrics.bmi - 18.5) / 11.5) * 100))}%` }} /><span /><span /><span /><span /></div></div><div className="bmi-legend" aria-label="BMI scale legend"><span><b>Under</b><small>&lt;18.5</small></span><span><b>Healthy</b><small>18.5–24.9</small></span><span><b>Above</b><small>25–29.9</small></span><span><b>High</b><small>30+</small></span></div></> : <div className="bmi-placeholder"><Activity size={21} /><span>{!bodySex ? "Choose male or female to continue." : hasStartedMetrics ? "Check that your measurements are within the supported range." : "Enter your measurements to see your result."}</span></div>}</div>
+      <p className="bmi-note">Adult BMI uses the same formula for male and female profiles. It is a general screening estimate, not a medical diagnosis.</p>
     </div> },
     { kicker: "Weekly rhythm", title: "How many days can you own?", copy: "Choose the schedule you can repeat even during a busy week.", body: <div className="day-picker"><button onClick={() => setDays(Math.max(2, days - 1))}><Minus /></button><strong>{days}<span>days / week</span></strong><button onClick={() => setDays(Math.min(6, days + 1))}><Plus /></button></div> },
     { kicker: "Your setup", title: "What can you train with?", copy: "Every generated exercise will fit the equipment you actually have.", body: <div className="stacked-choices">{[["Full gym", "Barbells, cables, machines, dumbbells"], ["Dumbbells", "Dumbbells, bench, and bodyweight"], ["Bodyweight", "No equipment required"]].map(([value, label]) => <button key={value} className={setup === value ? "selected" : ""} onClick={() => setSetup(value as TrainingSetup)}><span>{value}</span><small>{label}</small><i>{setup === value && <Check size={14} />}</i></button>)}</div> },
@@ -467,62 +473,70 @@ function greetingForNow() {
   return "Good evening";
 }
 
-function HomeView({ routine, saved, onOpen, onSave, onNavigate, onStart }: { routine: RoutineDay[]; saved: string[]; onOpen: (exercise: ExerciseGuide) => void; onSave: (id: string) => void; onNavigate: (view: View) => void; onStart: (day: RoutineDay) => void }) {
-  const today = routine[0];
-  const [ticks, setTicks] = useState<string[]>([]);
-  useEffect(() => {
-    setTicks(buildDateTicks(ACTIVITY_DAYS));
-  }, []);
-  return <>
-    <section className="home-greeting">
-      <div>
-        <h1>Ready to put<br />the work in?</h1>
-      </div>
-    </section>
-    <section className="today-card">
-      <div className="today-top"><span><Zap size={13} /> Today’s workout</span><b>{today?.exercises.length ?? 0} exercises · ~52 min</b></div>
-      <div className="today-main">
-        <div>
-          <small>{today?.name ?? "Build your routine"}</small>
-          <h2>{today ? today.name : "Your plan starts here"}</h2>
-          <p>{today ? "A focused session built from your goal, schedule, and equipment." : "Choose movements from the library to begin."}</p>
-          <div className="stat-pills">
-            <Badge variant="secondary" className="h-auto rounded-full px-3 py-1.5">~52 min</Badge>
-            <Badge variant="secondary" className="h-auto rounded-full px-3 py-1.5">{today?.exercises.length ?? 0} exercises</Badge>
-            <Badge variant="secondary" className="h-auto rounded-full px-3 py-1.5">354 kcal</Badge>
-          </div>
-        </div>
-        {today && <button className="play-button" onClick={() => onStart(today)} aria-label="Start workout"><Play size={22} fill="currentColor" /></button>}
-      </div>
-      {today && <div className="today-movements">{today.exercises.slice(0, 4).map((exercise, index) => <button key={exercise.id} onClick={() => onOpen(exercise)}><span>{String(index + 1).padStart(2, "0")}</span><strong>{exercise.name}</strong><small>{exercise.sets} × {exercise.reps}</small><ChevronRight size={15} /></button>)}</div>}
-    </section>
-    <Card className="matrix-panel mt-3 gap-3 rounded-[28px] py-4 ring-foreground/5">
-      <CardContent className="space-y-3">
-        <header><span>Weekly output</span><strong>Activity</strong></header>
-        <DotMatrixChart values={activitySeries} ticks={ticks} />
-        <DateStrip days={29} />
-      </CardContent>
-    </Card>
-    <div className="stats-board">
-      <article className="stat-card">
-        <Clock3 size={18} />
-        <span>Active minutes</span>
-        <strong>75 <small>/ 120</small></strong>
-        <DotProgress value={75} max={120} dots={22} />
-      </article>
-      <div className="stats-stack">
-        <article className="stat-card compact"><Flame size={16} /><span>Calories burned</span><strong>1258</strong></article>
-        <article className="stat-card compact"><Droplet size={16} /><span>Water intake</span><strong>1.8 L</strong></article>
-      </div>
-      <article className="stat-card wide">
-        <Activity size={18} />
-        <span>Steps today</span>
-        <strong>7251 <small>/ 10k</small></strong>
-        <DotProgress value={7251} />
-      </article>
+function HomeQuickAction({ icon: Icon, label, detail, onClick }: { icon: LucideIcon; label: string; detail: string; onClick: () => void }) {
+  return <button className="home-quick-action" type="button" onClick={onClick}><span><Icon size={19} /></span><strong>{label}</strong><small>{detail}</small></button>;
+}
+
+function HomeWorkoutCard({ day, onOpen, onStart, onBuild }: { day?: RoutineDay; onOpen: (exercise: ExerciseGuide) => void; onStart: (day: RoutineDay) => void; onBuild: () => void }) {
+  const exerciseCount = day?.exercises.length ?? 0;
+  const duration = Math.max(30, exerciseCount * 7);
+  return <section className="home-focus-card" aria-labelledby="home-focus-title">
+    <div className="home-focus-copy">
+      <div className="home-focus-kicker"><span><Zap size={14} /> Next session</span><b>{day ? "Ready" : "Not planned"}</b></div>
+      <h1 id="home-focus-title">{day?.name ?? "Build your first workout"}</h1>
+      <p>{day ? "Your plan is ready. Start now or preview a movement before you train." : "Create a routine that fits your goal, equipment, and week."}</p>
+      <div className="home-focus-meta"><span><Clock3 size={15} /> {day ? `${duration} min` : "Flexible"}</span><span><Dumbbell size={15} /> {exerciseCount} exercises</span></div>
+      <button className="home-start-action" type="button" onClick={() => day ? onStart(day) : onBuild()}>{day ? <><Play size={17} fill="currentColor" /> Start session</> : <><Plus size={17} /> Build routine</>}</button>
     </div>
-    <section><SectionTitle kicker="Technique first" title="Featured guide" action={<button className="text-button" onClick={() => onNavigate("Library")}>See all <ArrowRight size={14} /></button>} /><ExerciseCard feature exercise={exercises[0]} saved={saved.includes(exercises[0].id)} onOpen={() => onOpen(exercises[0])} onSave={() => onSave(exercises[0].id)} /></section>
-  </>;
+    <div className="home-focus-footer">
+      <div className="home-exercise-stack" aria-label={day ? "Preview today's exercises" : "No exercises planned"}>
+        {day?.exercises.slice(0, 4).map((exercise) => <button type="button" className={exercise.heroFromSheet ? "hero-sheet-start" : undefined} key={exercise.id} onClick={() => onOpen(exercise)} aria-label={`Open ${exercise.name}`}><Image src={exercise.heroImage} alt="" fill sizes="52px" /></button>)}
+        {exerciseCount > 4 && <span>+{exerciseCount - 4}</span>}
+      </div>
+      <small>{day ? "Tap a movement to preview" : "Your selected exercises will appear here"}</small>
+    </div>
+  </section>;
+}
+
+function HomeMomentumCard({ planned, completed, calories, saved }: { planned: number; completed: number; calories: number; saved: number }) {
+  const target = Math.max(1, Math.min(7, planned));
+  const logged = Math.min(target, completed);
+  const percent = Math.round((logged / target) * 100);
+  return <section className="home-momentum-card" aria-labelledby="home-momentum-title">
+    <header><span className="home-panel-icon"><Trophy size={19} /></span><div><small>This week</small><h2 id="home-momentum-title">Your momentum</h2></div><strong>{percent}%</strong></header>
+    <div className="home-session-dots" aria-label={`${logged} of ${target} workouts completed`}>{Array.from({ length: target }, (_, index) => <i className={index < logged ? "complete" : ""} key={index} />)}</div>
+    <p>{logged ? `${logged} session${logged === 1 ? "" : "s"} logged. Keep the rhythm going.` : "Your week is ready. Complete the first session to start the streak."}</p>
+    <div className="home-momentum-metrics"><span><b>{logged}</b><small>Workouts</small></span><span><b>{calories}</b><small>Calories</small></span><span><b>{saved}</b><small>Saved</small></span></div>
+  </section>;
+}
+
+function HomeGuideCard({ exercise, saved, onOpen, onSave }: { exercise: ExerciseGuide; saved: boolean; onOpen: () => void; onSave: () => void }) {
+  return <article className="home-guide-card">
+    <button type="button" className={`home-guide-art ${exercise.heroFromSheet ? "hero-sheet-start" : ""}`} onClick={onOpen}><Image src={exercise.heroImage} alt={`${exercise.name} starting position`} fill sizes="(max-width: 700px) 36vw, 220px" /></button>
+    <div className="home-guide-copy"><span><Sparkles size={13} /> Technique focus</span><h2>{exercise.name}</h2><p>{exercise.steps[1].cue}</p><button type="button" onClick={onOpen}>Open guide <ArrowRight size={14} /></button></div>
+    <button type="button" className={`home-guide-save ${saved ? "saved" : ""}`} onClick={onSave} aria-label={saved ? `Remove ${exercise.name} from saved exercises` : `Save ${exercise.name}`}><Bookmark size={16} fill={saved ? "currentColor" : "none"} /></button>
+  </article>;
+}
+
+function HomeView({ routine, saved, calories, workouts, onOpen, onSave, onNavigate, onStart, onBuildRoutine, onLogMeal }: { routine: RoutineDay[]; saved: string[]; calories: number; workouts: number; onOpen: (exercise: ExerciseGuide) => void; onSave: (id: string) => void; onNavigate: (view: View) => void; onStart: (day: RoutineDay) => void; onBuildRoutine: () => void; onLogMeal: () => void }) {
+  const today = routine[0];
+  const guide = today?.exercises[0] ?? exercises.find((exercise) => saved.includes(exercise.id)) ?? exercises[0];
+  return <section className="home-dashboard">
+    <header className="home-dashboard-heading"><div><span className="eyebrow">Today</span><h1>One place.<br />Next move.</h1></div><p>Train, track, or explore without digging through your plan.</p></header>
+    <div className="home-command-grid">
+      <HomeWorkoutCard day={today} onOpen={onOpen} onStart={onStart} onBuild={onBuildRoutine} />
+      <section className="home-quick-panel" aria-labelledby="home-quick-title"><header><h2 id="home-quick-title">Quick access</h2><small>One tap away</small></header><div className="home-quick-grid">
+        <HomeQuickAction icon={Dumbbell} label="My plan" detail="View schedule" onClick={() => onNavigate("Workout")} />
+        <HomeQuickAction icon={Search} label="Exercises" detail="Browse library" onClick={() => onNavigate("Library")} />
+        <HomeQuickAction icon={Plus} label="Log meal" detail="Add nutrition" onClick={onLogMeal} />
+        <HomeQuickAction icon={UserRound} label="Profile" detail="Your settings" onClick={() => onNavigate("Profile")} />
+      </div></section>
+    </div>
+    <div className="home-overview-grid">
+      <HomeMomentumCard planned={routine.length} completed={workouts} calories={calories} saved={saved.length} />
+      <section className="home-guide-section"><div className="home-section-heading"><div><span>Coach’s pick</span><h2>Move better today</h2></div><button type="button" onClick={() => onNavigate("Library")}>Library <ArrowRight size={14} /></button></div><HomeGuideCard exercise={guide} saved={saved.includes(guide.id)} onOpen={() => onOpen(guide)} onSave={() => onSave(guide.id)} /></section>
+    </div>
+  </section>;
 }
 
 function WorkoutView({ plans, calories, workouts, onOpen, onStart, onCustomize, onDelete }: { plans: RoutinePlan[]; calories: number; workouts: number; onOpen: (exercise: ExerciseGuide) => void; onStart: (day: RoutineDay) => void; onCustomize: () => void; onDelete: (routineId: string) => void }) {
@@ -1112,16 +1126,154 @@ function ExerciseDetail({ exercise, saved, onSave, onClose, onComplete, routineA
   );
 }
 
-function WorkoutSession({ day, onClose, onFinish }: { day: RoutineDay; onClose: () => void; onFinish: (completed: string[], calories: number) => void }) {
-  const [completed, setCompleted] = useState<string[]>([]);
+function plannedSetCount(exercise: ExerciseGuide) {
+  return Math.min(8, Math.max(1, Number(exercise.sets.match(/\d+/)?.[0]) || 3));
+}
+
+function plannedRepCount(exercise: ExerciseGuide) {
+  return String(Math.max(1, Number(exercise.reps.match(/\d+/)?.[0]) || 10));
+}
+
+function initialExerciseInput(exercise: ExerciseGuide): WorkoutExerciseInput {
+  return { sets: Array.from({ length: plannedSetCount(exercise) }, () => ({ weight: "", reps: "", complete: false })), followedPlan: false, rpe: "", notes: "" };
+}
+
+function loadWorkoutDraft(day: RoutineDay): WorkoutDraft {
+  const fallback = Object.fromEntries(day.exercises.map((exercise) => [exercise.id, initialExerciseInput(exercise)]));
+  if (typeof window === "undefined") return fallback;
+  try {
+    const saved = JSON.parse(window.localStorage.getItem(`flexform-workout-draft-${day.id}`) ?? "null") as Partial<WorkoutDraft> | null;
+    if (!saved) return fallback;
+    return Object.fromEntries(day.exercises.map((exercise) => {
+      const entry = saved[exercise.id];
+      if (!entry || !Array.isArray(entry.sets) || !entry.sets.length) return [exercise.id, fallback[exercise.id]];
+      return [exercise.id, { followedPlan: Boolean(entry.followedPlan), rpe: String(entry.rpe ?? ""), notes: String(entry.notes ?? ""), sets: entry.sets.map((set) => ({ weight: String(set.weight ?? ""), reps: String(set.reps ?? ""), complete: Boolean(set.complete) })) }];
+    }));
+  } catch {
+    return fallback;
+  }
+}
+
+function formatRestTime(seconds: number) {
+  return `${String(Math.floor(seconds / 60)).padStart(2, "0")}:${String(seconds % 60).padStart(2, "0")}`;
+}
+
+function formatSessionTime(seconds: number) {
+  const hours = Math.floor(seconds / 3600);
+  const minutes = Math.floor((seconds % 3600) / 60);
+  const remainingSeconds = seconds % 60;
+  return hours
+    ? `${hours}:${String(minutes).padStart(2, "0")}:${String(remainingSeconds).padStart(2, "0")}`
+    : `${String(minutes).padStart(2, "0")}:${String(remainingSeconds).padStart(2, "0")}`;
+}
+
+function WorkoutSession({ day, onClose, onFinish }: { day: RoutineDay; onClose: () => void; onFinish: (completed: string[], calories: number, logs: WorkoutExerciseLogPayload[]) => void }) {
+  const [expandedId, setExpandedId] = useState<string | null>(day.exercises[0]?.id ?? null);
+  const [draft, setDraft] = useState<WorkoutDraft>(() => loadWorkoutDraft(day));
+  const [timerExerciseId, setTimerExerciseId] = useState<string | null>(null);
+  const [timerRemaining, setTimerRemaining] = useState(0);
+  const [timerRunning, setTimerRunning] = useState(false);
+  const sessionStartedAt = useRef<number | null>(null);
+  const [sessionElapsed, setSessionElapsed] = useState(0);
+  const completed = useMemo(() => day.exercises.filter((exercise) => draft[exercise.id]?.sets.every((set) => set.complete)).map((exercise) => exercise.id), [day.exercises, draft]);
   const calories = completed.reduce((total, id) => { const item = day.exercises.find((exercise) => exercise.id === id); return total + (item ? Math.round(((item.caloriesPerMinute[0] + item.caloriesPerMinute[1]) / 2) * 6) : 0); }, 0);
-  return <div className="modal-backdrop workout-backdrop"><article className="workout-session"><header><button onClick={onClose}><X /></button><div><span>Workout in progress</span><strong>{day.name}</strong></div><b>{completed.length}/{day.exercises.length}</b></header><div className="workout-pulse" aria-hidden><i /></div><div className="workout-overview"><div><TimerReset /><span>Estimated time<strong>48 min</strong></span></div><div><Flame /><span>Active energy<strong>{calories} kcal</strong></span></div></div><div className="workout-list">{day.exercises.map((exercise, index) => { const done = completed.includes(exercise.id); return <article key={exercise.id}><div className={`workout-thumb ${exercise.heroFromSheet ? "hero-sheet-start" : ""}`}><Image src={exercise.heroImage} alt={`${exercise.name} starting position`} fill sizes="82px" /></div><div><span>Exercise {String(index + 1).padStart(2, "0")}</span><strong>{exercise.name}</strong><small>{exercise.sets} sets · {exercise.reps} reps · {exercise.rest} rest</small></div><button className={done ? "done" : ""} onClick={() => setCompleted((items) => done ? items.filter((id) => id !== exercise.id) : [...items, exercise.id])}>{done ? <Check /> : <Plus />}</button></article>; })}</div><footer><div><span>Session progress</span><strong>{Math.round((completed.length / day.exercises.length) * 100) || 0}%</strong></div><i><b style={{ width: `${(completed.length / day.exercises.length) * 100}%` }} /></i><button disabled={!completed.length} onClick={() => onFinish(completed, calories)}>Finish workout <Check /></button></footer></article></div>;
+  const progress = day.exercises.length ? (completed.length / day.exercises.length) * 100 : 0;
+
+  useEffect(() => {
+    window.localStorage.setItem(`flexform-workout-draft-${day.id}`, JSON.stringify(draft));
+  }, [day.id, draft]);
+
+  useEffect(() => {
+    sessionStartedAt.current = Date.now();
+    const interval = window.setInterval(() => {
+      const startedAt = sessionStartedAt.current;
+      if (startedAt !== null) setSessionElapsed(Math.floor((Date.now() - startedAt) / 1000));
+    }, 1000);
+    return () => window.clearInterval(interval);
+  }, []);
+
+  useEffect(() => {
+    if (!timerRunning) return;
+    const interval = window.setInterval(() => {
+      setTimerRemaining((current) => {
+        if (current > 1) return current - 1;
+        window.clearInterval(interval);
+        setTimerRunning(false);
+        return 0;
+      });
+    }, 1000);
+    return () => window.clearInterval(interval);
+  }, [timerRunning]);
+
+  const updateExercise = (exerciseId: string, updater: (entry: WorkoutExerciseInput) => WorkoutExerciseInput) => {
+    setDraft((current) => ({ ...current, [exerciseId]: updater(current[exerciseId]) }));
+  };
+  const updateSet = (exerciseId: string, setIndex: number, patch: Partial<WorkoutSetInput>) => {
+    updateExercise(exerciseId, (entry) => ({ ...entry, followedPlan: "reps" in patch || "complete" in patch ? false : entry.followedPlan, sets: entry.sets.map((set, index) => index === setIndex ? { ...set, ...patch } : set) }));
+  };
+  const followPlan = (exercise: ExerciseGuide) => {
+    updateExercise(exercise.id, (entry) => ({ ...entry, followedPlan: true, sets: entry.sets.map((set) => ({ ...set, reps: set.reps || plannedRepCount(exercise), complete: true })) }));
+  };
+  const startTimer = (exercise: ExerciseGuide) => {
+    const plannedSeconds = Math.max(15, Number(exercise.rest.match(/\d+/)?.[0]) || 60);
+    if (timerExerciseId !== exercise.id || timerRemaining === 0) setTimerRemaining(plannedSeconds);
+    setTimerExerciseId(exercise.id);
+    setTimerRunning(true);
+  };
+  const resetTimer = (exercise: ExerciseGuide) => {
+    setTimerExerciseId(exercise.id);
+    setTimerRemaining(Math.max(15, Number(exercise.rest.match(/\d+/)?.[0]) || 60));
+    setTimerRunning(false);
+  };
+  const finish = () => {
+    const logs: WorkoutExerciseLogPayload[] = day.exercises.map((exercise) => ({
+      exerciseId: exercise.id,
+      exerciseName: exercise.name,
+      followedPlan: draft[exercise.id].followedPlan,
+      rpe: Number(draft[exercise.id].rpe) || null,
+      notes: draft[exercise.id].notes.trim(),
+      sets: draft[exercise.id].sets.map((set) => ({ weightKg: Number(set.weight) || null, reps: Number(set.reps) || null, completed: set.complete })),
+    }));
+    window.localStorage.removeItem(`flexform-workout-draft-${day.id}`);
+    onFinish(completed, calories, logs);
+  };
+
+  return <div className="modal-backdrop workout-backdrop"><article className="workout-session">
+    <header><button onClick={onClose} aria-label="Close workout"><X /></button><div><span>Workout in progress</span><strong>{day.name}</strong></div><b>{completed.length}/{day.exercises.length}</b></header>
+    <section className="workout-session-tracker" aria-label="Live workout progress">
+      <div className="workout-tracker-stat"><span><Clock3 /> Elapsed</span><strong>{formatSessionTime(sessionElapsed)}</strong></div>
+      <div className="workout-tracker-rail" role="progressbar" aria-label="Exercises completed" aria-valuemin={0} aria-valuemax={day.exercises.length} aria-valuenow={completed.length}><i style={{ width: `${progress}%` }} /></div>
+      <div className="workout-tracker-stat workout-tracker-count"><span>Exercises</span><strong>{completed.length} of {day.exercises.length}</strong></div>
+    </section>
+    <div className="workout-overview"><div><TimerReset /><span>Estimated time<strong>{Math.max(30, day.exercises.length * 8)} min</strong></span></div><div><Flame /><span>Active energy<strong>{calories} kcal</strong></span></div></div>
+    <div className="workout-list">{day.exercises.map((exercise, index) => {
+      const entry = draft[exercise.id];
+      const done = completed.includes(exercise.id);
+      const expanded = expandedId === exercise.id;
+      const timerValue = timerExerciseId === exercise.id ? timerRemaining : Math.max(15, Number(exercise.rest.match(/\d+/)?.[0]) || 60);
+      return <article className={`workout-exercise-card ${expanded ? "expanded" : ""} ${done ? "done" : ""}`} key={exercise.id}>
+        <button type="button" className="workout-exercise-summary" aria-expanded={expanded} onClick={() => setExpandedId(expanded ? null : exercise.id)}>
+          <span className={`workout-thumb ${exercise.heroFromSheet ? "hero-sheet-start" : ""}`}><Image src={exercise.heroImage} alt={`${exercise.name} starting position`} fill sizes="82px" /></span>
+          <span className="workout-exercise-copy"><small>Exercise {String(index + 1).padStart(2, "0")}</small><strong>{exercise.name}</strong><em>{exercise.sets} sets · {exercise.reps} reps · {exercise.rest} rest</em></span>
+          <span className="workout-expand-icon">{done ? <Check /> : <ChevronRight />}</span>
+        </button>
+        {expanded && <div className="workout-exercise-panel">
+          <div className="workout-plan-row"><div><span>Planned target</span><strong>{exercise.sets} × {exercise.reps}</strong></div><button type="button" className={entry.followedPlan ? "active" : ""} onClick={() => followPlan(exercise)}><Check size={15} /> {entry.followedPlan ? "Plan logged" : "Followed plan exactly"}</button></div>
+          <div className="workout-set-table"><div className="workout-set-head"><span>Set</span><span>Load (kg)</span><span>Reps</span><span>Done</span></div>{entry.sets.map((set, setIndex) => <div className={`workout-set-row ${set.complete ? "complete" : ""}`} key={setIndex}><b>{setIndex + 1}</b><input type="number" min="0" max="999" step="0.5" inputMode="decimal" value={set.weight} onChange={(event) => updateSet(exercise.id, setIndex, { weight: event.target.value })} placeholder="—" aria-label={`${exercise.name} set ${setIndex + 1} weight in kilograms`} /><input type="number" min="0" max="999" step="1" inputMode="numeric" value={set.reps} onChange={(event) => updateSet(exercise.id, setIndex, { reps: event.target.value })} placeholder={plannedRepCount(exercise)} aria-label={`${exercise.name} set ${setIndex + 1} repetitions`} /><button type="button" className={set.complete ? "complete" : ""} onClick={() => updateSet(exercise.id, setIndex, { complete: !set.complete })} aria-label={`${set.complete ? "Reopen" : "Complete"} ${exercise.name} set ${setIndex + 1}`}><Check size={15} /></button></div>)}</div>
+          <div className="workout-set-actions"><button type="button" onClick={() => updateExercise(exercise.id, (current) => ({ ...current, followedPlan: false, sets: [...current.sets, { weight: "", reps: "", complete: false }] }))}><Plus size={14} /> Add set</button><button type="button" disabled={entry.sets.length === 1} onClick={() => updateExercise(exercise.id, (current) => ({ ...current, followedPlan: false, sets: current.sets.slice(0, -1) }))}><Minus size={14} /> Remove</button></div>
+          <div className="workout-rest-card"><div><span>Rest timer</span><strong>{formatRestTime(timerValue)}</strong><small>{timerRunning && timerExerciseId === exercise.id ? "Counting down" : `${exercise.rest} target`}</small></div><div><button type="button" onClick={() => timerRunning && timerExerciseId === exercise.id ? setTimerRunning(false) : startTimer(exercise)} aria-label={timerRunning && timerExerciseId === exercise.id ? "Pause rest timer" : "Start rest timer"}>{timerRunning && timerExerciseId === exercise.id ? <Pause size={16} /> : <Play size={16} fill="currentColor" />}</button><button type="button" onClick={() => { setTimerExerciseId(exercise.id); setTimerRemaining(timerValue + 30); }} aria-label="Add 30 seconds">+30</button><button type="button" onClick={() => resetTimer(exercise)} aria-label="Reset rest timer"><RotateCcw size={15} /></button></div></div>
+          <div className="workout-manual-fields"><label><span>Effort</span><div><input type="number" min="1" max="10" step="0.5" inputMode="decimal" value={entry.rpe} onChange={(event) => updateExercise(exercise.id, (current) => ({ ...current, rpe: event.target.value }))} placeholder="8" /><small>RPE / 10</small></div></label><label><span>Session notes</span><textarea value={entry.notes} onChange={(event) => updateExercise(exercise.id, (current) => ({ ...current, notes: event.target.value }))} placeholder="Tempo, form cues, pain, substitutions…" /></label></div>
+        </div>}
+      </article>;
+    })}</div>
+    <footer><div><span>Session progress</span><strong>{Math.round(progress) || 0}%</strong></div><i><b style={{ width: `${progress}%` }} /></i><button disabled={!completed.length} onClick={finish}>Finish workout <Check /></button></footer>
+  </article></div>;
 }
 
 export default function FlexFormDashboard() {
   const [stage, setStage] = useState<AppStage>("auth");
   const [displayName, setDisplayName] = useState("Alex");
-  const [profile, setProfile] = useState<OnboardingProfile>({ displayName: "Alex", goal: "Build muscle", experience: "Returning", bodyMetrics: { heightCm: 175, weightKg: 75, bmi: 24.5 }, daysPerWeek: 4, setup: "Full gym", planMode: "generated" });
+  const [profile, setProfile] = useState<OnboardingProfile>({ displayName: "Alex", goal: "Build muscle", experience: "Returning", bodyMetrics: { sex: "male", heightCm: 175, weightKg: 75, bmi: 24.5 }, daysPerWeek: 4, setup: "Full gym", planMode: "generated" });
   const [view, setView] = useState<View>("Home");
   const [routinePlans, setRoutinePlans] = useState<RoutinePlan[]>(() => [{ id: "starter-routine", name: "Starter routine", days: buildRoutine("Build muscle", 4, "Full gym"), schedule: null }]);
   const routine = routinePlans.flatMap((plan) => plan.days);
@@ -1277,7 +1429,7 @@ export default function FlexFormDashboard() {
         <div className="app-header-actions"><button className="header-profile" onClick={() => navigate("Profile")} aria-label="Open profile"><UserRound size={21} /></button></div>
       </header>
       <main className={`app-content ${workoutArea ? "plan-content" : ""}`}>
-        {view === "Home" && <HomeView routine={routine} saved={saved} onOpen={setSelected} onSave={toggleSaved} onNavigate={navigate} onStart={setActiveWorkout} />}
+        {view === "Home" && <HomeView routine={routine} saved={saved} calories={calories} workouts={workouts} onOpen={setSelected} onSave={toggleSaved} onNavigate={navigate} onStart={setActiveWorkout} onBuildRoutine={() => setRoutineBuilderOpen(true)} onLogMeal={() => setMealLoggerOpen(true)} />}
         {view === "Workout" && <WorkoutView plans={routinePlans} calories={calories} workouts={workouts} onOpen={setSelected} onStart={setActiveWorkout} onCustomize={() => setRoutineBuilderOpen(true)} onDelete={removeRoutine} />}
         {view === "Library" && <LibraryView saved={saved} onOpen={setSelected} onSave={toggleSaved} />}
         {view === "Meal" && <MealView meals={meals} onOpenLogger={() => setMealLoggerOpen(true)} />}
@@ -1286,7 +1438,7 @@ export default function FlexFormDashboard() {
       <nav className="floating-nav">{navItems.map(({ label, icon: Icon }) => <button key={label} className={view === label || (view === "Library" && label === "Workout") ? "active" : ""} onClick={() => navigate(label)}><Icon size={19} /><span>{label}</span></button>)}</nav>
       {routineBuilderOpen && <RoutineBuilderDrawer initialSelection={[]} initialDayCount={1} saved={saved} onClose={closeRoutineBuilder} onSaveExercise={toggleSaved} onSave={saveCustomRoutine} />}
       {selected && <ExerciseDetail exercise={selected} saved={saved.includes(selected.id)} onSave={() => toggleSaved(selected.id)} onClose={() => setSelected(null)} onComplete={() => { void saveGuideCompletion(selected.id).catch(() => undefined); setSelected(null); notify("Guide complete. Clean reps win."); }} />}
-      {activeWorkout && <WorkoutSession day={activeWorkout} onClose={() => setActiveWorkout(null)} onFinish={(completed, burned) => { void saveWorkoutSummary(activeWorkout.id, activeWorkout.name, completed, burned).catch(() => undefined); setCalories((value) => value + burned); setWorkouts((value) => value + 1); setActiveWorkout(null); notify(`${completed.length} exercises logged · ${burned} kcal estimated`); }} />}
+      {activeWorkout && <WorkoutSession day={activeWorkout} onClose={() => setActiveWorkout(null)} onFinish={(completed, burned, logs) => { void saveWorkoutSummary(activeWorkout.id, activeWorkout.name, completed, burned, logs).catch(() => undefined); setCalories((value) => value + burned); setWorkouts((value) => value + 1); setActiveWorkout(null); notify(`${completed.length} exercises logged · ${burned} kcal estimated`); }} />}
       {mealLoggerOpen && <MealLoggerDrawer onClose={closeMealLogger} onAdd={addMeal} />}
       {toast && <div className="toast"><Check size={15} />{toast}</div>}
     </div>

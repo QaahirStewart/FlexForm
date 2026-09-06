@@ -1,11 +1,14 @@
 import type { Goal, TrainingSetup } from "@/lib/exercises";
 import { createClient } from "./client";
 
+export type BodySex = "male" | "female";
+
 export type OnboardingProfile = {
   displayName: string;
   goal: Goal;
   experience: string;
   bodyMetrics: {
+    sex: BodySex;
     heightCm: number;
     weightKg: number;
     bmi: number;
@@ -17,6 +20,14 @@ export type OnboardingProfile = {
 
 type RoutinePayload = Array<{ id: string; name: string; exercises: Array<{ id: string; name: string }> }>;
 type RoutineSchedulePayload = { startDate: string; weekdays: string[]; durationWeeks: number | null };
+export type WorkoutExerciseLogPayload = {
+  exerciseId: string;
+  exerciseName: string;
+  followedPlan: boolean;
+  rpe: number | null;
+  notes: string;
+  sets: Array<{ weightKg: number | null; reps: number | null; completed: boolean }>;
+};
 
 export async function saveOnboarding(profile: OnboardingProfile) {
   if (typeof window !== "undefined") localStorage.setItem("flexform-profile", JSON.stringify(profile));
@@ -29,6 +40,7 @@ export async function saveOnboarding(profile: OnboardingProfile) {
     display_name: profile.displayName,
     goal: profile.goal,
     experience: profile.experience,
+    sex: profile.bodyMetrics?.sex ?? null,
     height_cm: profile.bodyMetrics?.heightCm ?? null,
     weight_kg: profile.bodyMetrics?.weightKg ?? null,
     bmi: profile.bodyMetrics?.bmi ?? null,
@@ -81,23 +93,44 @@ export async function deleteRoutine(routineId?: string) {
   return "supabase" as const;
 }
 
-export async function saveWorkoutSummary(workoutKey: string, workoutName: string, completedExerciseIds: string[], calories: number) {
+export async function saveWorkoutSummary(workoutKey: string, workoutName: string, completedExerciseIds: string[], calories: number, exerciseLogs: WorkoutExerciseLogPayload[] = []) {
   const completedAt = new Date().toISOString();
   if (typeof window !== "undefined") {
     const history = JSON.parse(localStorage.getItem("flexform-history") ?? "[]") as unknown[];
-    localStorage.setItem("flexform-history", JSON.stringify([{ workoutKey, workoutName, completedExerciseIds, calories, completedAt }, ...history].slice(0, 100)));
+    localStorage.setItem("flexform-history", JSON.stringify([{ workoutKey, workoutName, completedExerciseIds, calories, completedAt, exerciseLogs }, ...history].slice(0, 100)));
   }
   const supabase = createClient();
   if (!supabase) return "device" as const;
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return "device" as const;
-  const { error } = await supabase.from("workout_sessions").insert({
+  const { data: session, error } = await supabase.from("workout_sessions").insert({
     user_id: user.id,
     workout_key: workoutKey,
     workout_name: workoutName,
     calories_burned: calories,
     completed_exercises: completedExerciseIds.length,
+  }).select("id").single();
+  if (error || !session) throw error ?? new Error("Workout session was not created");
+  const exerciseRows = exerciseLogs.filter((log) => completedExerciseIds.includes(log.exerciseId)).map((log) => {
+    const completedSets = log.sets.filter((set) => set.completed);
+    const lastLoadedSet = [...completedSets].reverse().find((set) => set.weightKg !== null || set.reps !== null);
+    return {
+      session_id: session.id,
+      user_id: user.id,
+      exercise_key: log.exerciseId,
+      exercise_name: log.exerciseName,
+      completed_sets: completedSets.length,
+      weight_kg: lastLoadedSet?.weightKg ?? null,
+      reps: lastLoadedSet?.reps ?? null,
+      followed_plan: log.followedPlan,
+      rpe: log.rpe,
+      notes: log.notes || null,
+      set_data: log.sets,
+    };
   });
-  if (error) throw error;
+  if (exerciseRows.length) {
+    const { error: exerciseError } = await supabase.from("exercise_logs").insert(exerciseRows);
+    if (exerciseError) throw exerciseError;
+  }
   return "supabase" as const;
 }
