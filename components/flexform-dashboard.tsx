@@ -474,26 +474,31 @@ function greetingForNow() {
 }
 
 function HomeQuickAction({ icon: Icon, label, detail, onClick }: { icon: LucideIcon; label: string; detail: string; onClick: () => void }) {
-  return <button className="home-quick-action" type="button" onClick={onClick}><span><Icon size={19} /></span><strong>{label}</strong><small>{detail}</small></button>;
+  return <button className="home-quick-action" type="button" onClick={onClick}>
+    <span className="home-quick-icon"><Icon size={18} /></span>
+    <span className="home-quick-copy"><strong>{label}</strong><small>{detail}</small></span>
+    <ChevronRight className="home-quick-arrow" size={15} />
+  </button>;
 }
 
 function HomeWorkoutCard({ day, onOpen, onStart, onBuild }: { day?: RoutineDay; onOpen: (exercise: ExerciseGuide) => void; onStart: (day: RoutineDay) => void; onBuild: () => void }) {
   const exerciseCount = day?.exercises.length ?? 0;
   const duration = Math.max(30, exerciseCount * 7);
+  const lineup = day?.exercises.slice(0, 2).map((exercise) => exercise.name).join(" · ") || "Add exercises to see your lineup";
   return <section className="home-focus-card" aria-labelledby="home-focus-title">
     <div className="home-focus-copy">
-      <div className="home-focus-kicker"><span><Zap size={14} /> Next session</span><b>{day ? "Ready" : "Not planned"}</b></div>
+      <div className="home-focus-kicker"><span><Zap size={14} /> Next session</span><b>{day ? "Ready to start" : "Setup needed"}</b></div>
       <h1 id="home-focus-title">{day?.name ?? "Build your first workout"}</h1>
-      <p>{day ? "Your plan is ready. Start now or preview a movement before you train." : "Create a routine that fits your goal, equipment, and week."}</p>
-      <div className="home-focus-meta"><span><Clock3 size={15} /> {day ? `${duration} min` : "Flexible"}</span><span><Dumbbell size={15} /> {exerciseCount} exercises</span></div>
+      <p>{day ? "Everything is set. Log each set, follow your rest timers, and keep your session in one place." : "Create a routine around your goal, available equipment, and weekly schedule."}</p>
+      <div className="home-focus-meta"><span><Clock3 size={14} /> {day ? `${duration} min` : "Flexible timing"}</span><span><Dumbbell size={14} /> {exerciseCount} exercises</span></div>
       <button className="home-start-action" type="button" onClick={() => day ? onStart(day) : onBuild()}>{day ? <><Play size={17} fill="currentColor" /> Start session</> : <><Plus size={17} /> Build routine</>}</button>
     </div>
     <div className="home-focus-footer">
-      <div className="home-exercise-stack" aria-label={day ? "Preview today's exercises" : "No exercises planned"}>
-        {day?.exercises.slice(0, 4).map((exercise) => <button type="button" className={exercise.heroFromSheet ? "hero-sheet-start" : undefined} key={exercise.id} onClick={() => onOpen(exercise)} aria-label={`Open ${exercise.name}`}><Image src={exercise.heroImage} alt="" fill sizes="52px" /></button>)}
-        {exerciseCount > 4 && <span>+{exerciseCount - 4}</span>}
+      <div className="home-lineup-copy"><span>Workout lineup</span><strong>{lineup}</strong></div>
+      <div className="home-exercise-stack" aria-label={day ? "Preview next exercises" : "No exercises planned"}>
+        {day?.exercises.slice(0, 3).map((exercise) => <button type="button" className={exercise.heroFromSheet ? "hero-sheet-start" : undefined} key={exercise.id} onClick={() => onOpen(exercise)} aria-label={`Open ${exercise.name}`}><Image src={exercise.heroImage} alt="" fill sizes="46px" /></button>)}
+        {exerciseCount > 3 && <span>+{exerciseCount - 3}</span>}
       </div>
-      <small>{day ? "Tap a movement to preview" : "Your selected exercises will appear here"}</small>
     </div>
   </section>;
 }
@@ -522,17 +527,15 @@ function HomeView({ routine, saved, calories, workouts, onOpen, onSave, onNaviga
   const today = routine[0];
   const guide = today?.exercises[0] ?? exercises.find((exercise) => saved.includes(exercise.id)) ?? exercises[0];
   return <section className="home-dashboard">
-    <header className="home-dashboard-heading"><div><span className="eyebrow">Today</span><h1>One place.<br />Next move.</h1></div><p>Train, track, or explore without digging through your plan.</p></header>
-    <div className="home-command-grid">
+    <header className="view-heading home-view-heading"><span className="eyebrow">Dashboard</span><h1>Today.</h1><p>Your next session, weekly rhythm, and essential tools—organized around what matters now.</p></header>
+    <div className="home-dashboard-grid">
       <HomeWorkoutCard day={today} onOpen={onOpen} onStart={onStart} onBuild={onBuildRoutine} />
-      <section className="home-quick-panel" aria-labelledby="home-quick-title"><header><h2 id="home-quick-title">Quick access</h2><small>One tap away</small></header><div className="home-quick-grid">
+      <section className="home-quick-panel" aria-labelledby="home-quick-title"><header><div><span>Shortcuts</span><h2 id="home-quick-title">Quick access</h2></div><small>One tap away</small></header><div className="home-quick-grid">
         <HomeQuickAction icon={Dumbbell} label="My plan" detail="View schedule" onClick={() => onNavigate("Workout")} />
         <HomeQuickAction icon={Search} label="Exercises" detail="Browse library" onClick={() => onNavigate("Library")} />
         <HomeQuickAction icon={Plus} label="Log meal" detail="Add nutrition" onClick={onLogMeal} />
         <HomeQuickAction icon={UserRound} label="Profile" detail="Your settings" onClick={() => onNavigate("Profile")} />
       </div></section>
-    </div>
-    <div className="home-overview-grid">
       <HomeMomentumCard planned={routine.length} completed={workouts} calories={calories} saved={saved.length} />
       <section className="home-guide-section"><div className="home-section-heading"><div><span>Coach’s pick</span><h2>Move better today</h2></div><button type="button" onClick={() => onNavigate("Library")}>Library <ArrowRight size={14} /></button></div><HomeGuideCard exercise={guide} saved={saved.includes(guide.id)} onOpen={() => onOpen(guide)} onSave={() => onSave(guide.id)} /></section>
     </div>
